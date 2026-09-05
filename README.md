@@ -94,10 +94,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 | Dataset | Metric | Result |
 |---|---|---|
-| Yelp-Fraud | AUC / Recall | Beats published CARE-GNN baseline |
-| Amazon-Fraud | Recall without group mechanism | Drops to 0 |
-| Elliptic | F1 vs. Random Forest | Loses |
-| UPI (synthetic) | F1 after adding IP/phone relations | 0.727 to 0.899 |
+| Yelp-Fraud | AUC | 0.907 (paper: 0.757, DGL reproduction: 0.687) |
+| Amazon-Fraud | Recall, with vs. without the group mechanism | 0.924 vs. 0.0 |
+| Elliptic | F1, this model vs. Random Forest | 0.424 vs. 0.788 |
+| UPI (synthetic) | F1, with vs. without the group mechanism | 0.899 vs. 0.530 |
 
 The CSV upload tool and the Razorpay webhook feed use a disclosed
 structural heuristic (cluster size and number of distinct identifier
