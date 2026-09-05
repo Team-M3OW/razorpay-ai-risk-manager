@@ -1,0 +1,13 @@
+# Platform API (app/) - what's actually needed to SERVE the app. Kept
+# deliberately minimal: app/main.py never imports torch/dgl/etc, and Oryx
+# (Azure App Service's Python builder) installs whatever is in this exact
+# file, so keeping it lightweight is what makes deploying on a small disk
+# quota (e.g. the Free F1 tier's 1GB) actually work.
+#
+# For the ML training/export pipeline (abuse_ring/), see requirements-ml.txt.
+fastapi
+uvicorn
+gunicorn
+pydantic
+httpx
+python-multipart

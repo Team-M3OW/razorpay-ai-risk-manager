@@ -1,0 +1,18 @@
+{
+  "dataset": "yelp",
+  "elapsed_sec": 67.0157699584961,
+  "epochs_trained": 150,
+  "node_test_metrics": {
+    "auc": 0.8817062068696634,
+    "pr_auc": 0.5934836421398152,
+    "recall": 0.83,
+    "precision": 0.3727115716753022,
+    "flag_rate": 0.31494778067885115
+  },
+  "published_reference": {
+    "paper_auc": 0.757,
+    "paper_recall": 0.719,
+    "dgl_auc": 0.687,
+    "dgl_recall": 0.662
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "dataset": "elliptic",
+  "elapsed_sec": 24.0930118560791,
+  "epochs_trained": 138,
+  "node_test_metrics": {
+    "auc": 0.8746820115088686,
+    "pr_auc": 0.30917120019666045,
+    "recall": 0.7100646352723915,
+    "precision": 0.3143908421913328,
+    "f1": 0.4358175120430717,
+    "flag_rate": 0.14673065386922615
+  },
+  "published_reference": {
+    "Logistic Regression (AF)": {
+      "precision": 0.404,
+      "recall": 0.593,
+      "f1": 0.481
+    },
+    "Random Forest (AF)": {
+      "precision": 0.956,
+      "recall": 0.67,
+      "f1": 0.788
+    },
+    "Random Forest (AF+NE)": {
+      "precision": 0.971,
+      "recall": 0.675,
+      "f1": 0.796
+    },
+    "MLP (AF)": {
+      "precision": 0.694,
+      "recall": 0.617,
+      "f1": 0.653
+    },
+    "GCN": {
+      "precision": 0.812,
+      "recall": 0.512,
+      "f1": 0.628
+    },
+    "Skip-GCN": {
+      "precision": 0.812,
+      "recall": 0.623,
+      "f1": 0.705
+    }
+  }
+}

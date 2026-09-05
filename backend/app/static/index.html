@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Abuse Ring Sentinel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root{
+  --bg:#0A0C14; --bg2:#0E1119; --elevated:#141826; --elevated-hi:#1B2032;
+  --sidebar:#080910; --border:rgba(255,255,255,0.07); --border-hi:rgba(255,255,255,0.14);
+  --text:#EBEDF5; --text2:#9DA3B8; --text3:#5F6579;
+  --accent:#12E6C8; --accent-dim:#0B8F7D; --accent-glow:rgba(18,230,200,0.25);
+  --danger:#FF5C72; --danger-glow:rgba(255,92,114,0.25);
+  --warn:#FFB84D; --warn-glow:rgba(255,184,77,0.2);
+  --font-display:'Sora',system-ui,sans-serif; --font-body:'Manrope',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;overflow:hidden;height:100vh;}
+::selection{background:var(--accent-glow);}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+#bg-canvas{position:fixed;inset:0;z-index:0;opacity:0.5;pointer-events:none;}
+
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:240px 1fr;height:100vh;}
+
+/* ---------- Sidebar ---------- */
+.sidebar{background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 14px;}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 8px 22px;}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent-dim));display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 0 20px var(--accent-glow);}
+.brand-name{font-family:var(--font-display);font-weight:700;font-size:14.5px;letter-spacing:-0.01em;}
+.brand-sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-top:1px;}
+
+.dataset-switch{display:flex;flex-direction:column;gap:4px;margin-bottom:22px;}
+.ds-label{font-family:var(--font-mono);font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:0.09em;padding:0 8px;margin-bottom:6px;}
+.ds-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--text2);font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;text-align:left;transition:all .15s;}
+.ds-btn:hover{background:var(--elevated);color:var(--text);}
+.ds-btn.active{background:var(--elevated-hi);border-color:var(--border-hi);color:var(--text);}
+.ds-dot{width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0;}
+.ds-btn.active .ds-dot{background:var(--accent);box-shadow:0 0 8px var(--accent-glow);}
+.ds-kind{font-family:var(--font-mono);font-size:8.5px;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.04em;}
+.ds-kind.real{background:rgba(18,230,200,0.12);color:var(--accent);}
+.ds-kind.synthetic{background:rgba(255,184,77,0.12);color:var(--warn);}
+
+.nav{display:flex;flex-direction:column;gap:2px;flex:1;}
+.nav-item{display:flex;align-items:center;gap:11px;padding:10px 10px;border-radius:8px;color:var(--text2);font-weight:600;font-size:13.5px;cursor:pointer;transition:all .15s;border:1px solid transparent;position:relative;}
+.nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:0.75;}
+.nav-item:hover{background:var(--elevated);color:var(--text);}
+.nav-item.active{background:var(--elevated-hi);color:var(--text);border-color:var(--border-hi);}
+.nav-item.active svg{opacity:1;color:var(--accent);}
+.nav-item.active::before{content:'';position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--accent);border-radius:0 3px 3px 0;box-shadow:0 0 8px var(--accent-glow);}
+.nav-badge{margin-left:auto;font-family:var(--font-mono);font-size:10px;background:var(--elevated-hi);color:var(--text2);padding:1px 6px;border-radius:20px;}
+
+.sidebar-foot{padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;align-items:center;gap:7px;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse-dot 2s infinite;}
+@keyframes pulse-dot{0%,100%{opacity:1;box-shadow:0 0 0 0 var(--accent-glow);}50%{opacity:0.6;box-shadow:0 0 0 4px transparent;}}
+
+/* ---------- Main ---------- */
+.main{overflow-y:auto;height:100vh;}
+.topbar{position:sticky;top:0;z-index:5;background:rgba(10,12,20,0.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;}
+.topbar h1{font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:-0.01em;}
+.topbar .sub{color:var(--text2);font-size:12.5px;margin-top:2px;}
+.view{display:none;padding:26px 32px 60px;animation:fadein .35s ease;}
+.view.active{display:block;}
+@keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+/* ---------- Stat cards ---------- */
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
+.stat-card{background:var(--elevated);border:1px solid var(--border);border-radius:14px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s, transform .2s;}
+.stat-card:hover{border-color:var(--border-hi);transform:translateY(-1px);}
+.stat-card::after{content:'';position:absolute;top:0;right:0;width:70px;height:70px;background:radial-gradient(circle,var(--accent-glow),transparent 70%);opacity:0.5;}
+.stat-val{font-family:var(--font-display);font-size:30px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;}
+.stat-label{font-family:var(--font-mono);font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-top:6px;}
+
+.card{background:var(--elevated);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin-bottom:18px;}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.card-head h2{font-family:var(--font-display);font-size:14.5px;font-weight:700;}
+.card-desc{color:var(--text2);font-size:12px;margin:-8px 0 14px;max-width:70ch;}
+.pill-badge{font-family:var(--font-mono);font-size:9.5px;padding:2px 8px;border-radius:20px;border:1px solid var(--border-hi);color:var(--text2);text-transform:uppercase;}
+.pill-badge.acc{border-color:var(--accent-dim);color:var(--accent);}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+
+/* ---------- Cost curve (auto-selected threshold) ---------- */
+.cost-curve-wrap{position:relative;height:180px;margin:6px 0 18px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;}
+#cost-curve-canvas{width:100%;height:100%;display:block;}
+.slider-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+.slider-stat{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 12px;}
+.slider-stat b{display:block;font-family:var(--font-mono);font-size:17px;margin-top:3px;font-variant-numeric:tabular-nums;}
+.slider-stat span{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;}
+
+/* ---------- Table ---------- */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3);padding:8px 12px;border-bottom:1px solid var(--border);font-weight:500;}
+td{padding:11px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
+tr.case-row{cursor:pointer;transition:background .12s;}
+tr.case-row:hover{background:var(--elevated-hi);}
+tr.case-row td:first-child, tr.case-row td:nth-child(2){color:var(--text);font-weight:600;}
+.mono-cell{font-family:var(--font-mono);}
+
+.status-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;}
+.status-pill.pending{background:rgba(255,184,77,0.12);color:var(--warn);}
+.status-pill.confirmed_ring{background:rgba(255,92,114,0.12);color:var(--danger);}
+.status-pill.dismissed{background:rgba(18,230,200,0.12);color:var(--accent);}
+.status-pill::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;}
+
+.filters{display:flex;gap:8px;align-items:center;margin-bottom:14px;}
+select,input,button,textarea{font-family:var(--font-body);font-size:12.5px;color:var(--text);background:var(--bg2);border:1px solid var(--border-hi);border-radius:8px;padding:8px 12px;}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--accent-dim);}
+button{cursor:pointer;font-weight:700;transition:all .15s;}
+button:hover{border-color:var(--text3);}
+button.primary{background:var(--accent);color:#04150F;border-color:var(--accent);}
+button.primary:hover{box-shadow:0 0 16px var(--accent-glow);}
+button.danger-btn{background:var(--danger);color:#2A0510;border-color:var(--danger);}
+button.danger-btn:hover{box-shadow:0 0 16px var(--danger-glow);}
+button.ghost{background:transparent;}
+button:disabled{opacity:0.35;cursor:not-allowed;}
+
+.bulk-bar{display:none;align-items:center;gap:10px;background:var(--elevated-hi);border:1px solid var(--border-hi);border-radius:10px;padding:10px 14px;margin-bottom:14px;animation:fadein .2s ease;}
+.watch-flag{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--danger);font-weight:700;margin-left:6px;}
+
+.empty-state{text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;}
+
+/* ---------- Drawer ---------- */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(4,5,10,0.6);backdrop-filter:blur(2px);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s;}
+.drawer-backdrop.open{opacity:1;pointer-events:auto;}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(760px,92vw);background:var(--bg2);border-left:1px solid var(--border-hi);z-index:41;transform:translateX(100%);transition:transform .3s cubic-bezier(.2,.9,.3,1);overflow-y:auto;box-shadow:-30px 0 60px rgba(0,0,0,0.4);}
+.drawer.open{transform:none;}
+.drawer-inner{padding:26px 30px 60px;}
+.drawer-close{position:absolute;top:20px;right:24px;width:32px;height:32px;border-radius:8px;background:var(--elevated);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--text2);}
+.drawer-close:hover{color:var(--text);}
+
+.graph-box{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px;}
+.evidence-line{font-size:13px;color:var(--text2);margin-bottom:5px;}
+.evidence-line b{font-family:var(--font-mono);color:var(--text);background:var(--elevated);padding:1px 7px;border-radius:5px;font-weight:500;}
+.policy-box{background:var(--elevated);border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;margin-top:12px;font-size:12.5px;}
+.policy-box b{font-family:var(--font-display);}
+
+/* ---------- Toasts ---------- */
+#toasts{position:fixed;bottom:20px;right:20px;z-index:60;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--elevated-hi);border:1px solid var(--border-hi);border-radius:10px;padding:12px 16px;font-size:13px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,0.4);animation:toast-in .25s ease;display:flex;align-items:center;gap:8px;}
+.toast.ok{border-color:var(--accent-dim);}
+.toast.ok::before{content:'✓';color:var(--accent);}
+@keyframes toast-in{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
+
+.hero-canvas-wrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--border);margin-bottom:22px;height:150px;background:var(--elevated);}
+#ring-canvas{width:100%;height:100%;display:block;}
+.hero-overlay{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 26px;pointer-events:none;background:linear-gradient(90deg,rgba(10,12,20,0.75),rgba(10,12,20,0.15) 60%);}
+.hero-overlay h2{font-family:var(--font-display);font-size:19px;font-weight:700;}
+.hero-overlay p{color:var(--text2);font-size:12.5px;margin-top:4px;max-width:44ch;}
+
+.loading-skel{height:14px;background:linear-gradient(90deg,var(--elevated),var(--elevated-hi),var(--elevated));background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:6px;}
+@keyframes shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+
+/* ---------- Live Risk Check ---------- */
+.screen-hero{background:radial-gradient(circle at 15% 20%, rgba(18,230,200,0.08), transparent 55%), var(--elevated);}
+.screen-form{display:flex;gap:10px;margin:14px 0 12px;}
+.screen-form input{flex:1;font-family:var(--font-mono);font-size:14px;padding:13px 16px;}
+.screen-form button{padding:0 26px;font-size:13.5px;}
+.screen-examples{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px;}
+.chip{font-family:var(--font-mono);font-size:11px;padding:5px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border-hi);color:var(--text2);cursor:pointer;transition:all .15s;}
+.chip:hover{border-color:var(--accent-dim);color:var(--accent);}
+#screen-result{margin-top:20px;}
+.scan-line{height:2px;width:100%;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:50% 100%;animation:scan 0.7s linear infinite;border-radius:2px;}
+@keyframes scan{0%{background-position:-50% 0;}100%{background-position:150% 0;}}
+.verdict-card{border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;gap:6px;animation:fadein .3s ease;}
+.verdict-card.clean{background:rgba(18,230,200,0.06);border:1px solid rgba(18,230,200,0.25);}
+.verdict-card.hit{background:rgba(255,92,114,0.07);border:1px solid rgba(255,92,114,0.3);}
+.verdict-title{font-family:var(--font-display);font-size:19px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.verdict-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.verdict-card.clean .verdict-icon{background:rgba(18,230,200,0.18);}
+.verdict-card.hit .verdict-icon{background:rgba(255,92,114,0.18);}
+.verdict-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:var(--text2);}
+.verdict-meta b{color:var(--text);font-family:var(--font-mono);font-weight:600;}
+.verdict-graph-wrap{margin-top:16px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--bg);height:280px;position:relative;}
+
+/* ---------- Network Explorer / shared force graph ---------- */
+.network-wrap{border-radius:12px;border:1px solid var(--border);background:var(--bg);height:520px;position:relative;overflow:hidden;}
+.network-wrap svg, .verdict-graph-wrap svg, .graph-box svg{width:100%;height:100%;display:block;cursor:grab;}
+.network-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--text2);}
+.network-legend span{display:inline-flex;align-items:center;gap:6px;}
+.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+.graph-tooltip{position:fixed;pointer-events:none;background:var(--elevated-hi);border:1px solid var(--border-hi);border-radius:8px;padding:8px 11px;font-size:11.5px;z-index:70;box-shadow:0 10px 24px rgba(0,0,0,0.4);max-width:220px;}
+.graph-tooltip b{font-family:var(--font-mono);color:var(--accent);}
+.graph-empty-note{font-size:12px;color:var(--text3);text-align:center;padding:40px;}
+
+/* ---------- Upload & Trace ---------- */
+.dropzone{border:2px dashed var(--border-hi);border-radius:12px;padding:34px 20px;text-align:center;cursor:pointer;transition:all .15s;margin-top:6px;}
+.dropzone:hover{border-color:var(--accent-dim);background:rgba(18,230,200,0.03);}
+.dropzone.drag{border-color:var(--accent);background:rgba(18,230,200,0.06);}
+.dropzone-icon{font-size:24px;margin-bottom:8px;color:var(--accent);}
+.pipeline-console{margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-family:var(--font-mono);font-size:12px;max-height:220px;overflow-y:auto;}
+.pipeline-console .log-line{opacity:0;transform:translateY(4px);animation:log-in .3s forwards;color:var(--text2);padding:2px 0;}
+.pipeline-console .log-line.flag{color:var(--danger);}
+.pipeline-console .log-line.ok{color:var(--accent);}
+@keyframes log-in{to{opacity:1;transform:none;}}
+.ring-card{background:var(--elevated);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-top:10px;animation:fadein .3s ease;}
+.ring-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.merchant-chip{display:inline-block;font-family:var(--font-mono);font-size:11px;background:rgba(255,184,77,0.12);color:var(--warn);padding:3px 9px;border-radius:20px;margin:4px 6px 0 0;}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">🕸️</div>
+      <div>
+        <div class="brand-name">Abuse Ring Sentinel</div>
+        <div class="brand-sub">Risk Ops Console</div>
+      </div>
+    </div>
+
+    <div class="dataset-switch">
+      <div class="ds-label">Dataset</div>
+      <div id="ds-buttons"></div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-item active" data-view="screen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        Live Risk Check
+      </div>
+      <div class="nav-item" data-view="pipeline">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+        Upload &amp; Trace
+      </div>
+      <div class="nav-item" data-view="network">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><circle cx="12" cy="12" r="2.5"/><path d="M8 7.5l2.5 2.5M16 7.5l-2.5 2.5M8 16.5l2.5-2.5M16 16.5l-2.5-2.5"/></svg>
+        Network Explorer
+      </div>
+      <div class="nav-item" data-view="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Model Performance
+      </div>
+      <div class="nav-item" data-view="cases">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+        Case Queue <span class="nav-badge" id="nav-case-count">–</span>
+      </div>
+      <div class="nav-item" data-view="watchlist">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        Watchlist <span class="nav-badge" id="nav-watch-count">–</span>
+      </div>
+      <div class="nav-item" data-view="intel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-5 3 3 5-7"/></svg>
+        Intelligence
+      </div>
+    </nav>
+
+    <div class="sidebar-foot"><span class="live-dot"></span> Live · real held-out predictions</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="topbar-title">Overview</h1>
+        <div class="sub" id="topbar-sub">—</div>
+      </div>
+      <div id="topbar-actions"></div>
+    </div>
+
+    <!-- LIVE RISK CHECK -->
+    <section class="view active" id="view-screen">
+      <div class="card screen-hero">
+        <div class="card-head"><h2>Live Risk Check</h2><span class="pill-badge acc">real query, not a canned demo</span></div>
+        <p class="card-desc">Type a UPI handle, device ID, or bank account seen on a transaction. This runs an actual lookup against the model's detected-ring index — the same data the case queue reads from.</p>
+        <div class="screen-form">
+          <input id="screen-input" class="mono-cell" placeholder="e.g. u19000567@okhdfcbank" autocomplete="off">
+          <button class="primary" id="screen-btn">Screen</button>
+        </div>
+        <div class="screen-examples" id="screen-examples"></div>
+        <div id="screen-result"></div>
+      </div>
+    </section>
+
+    <!-- UPLOAD & TRACE -->
+    <section class="view" id="view-pipeline">
+      <div class="card">
+        <div class="card-head"><h2>Upload &amp; Trace</h2><span class="pill-badge acc">real graph construction, heuristic scoring</span></div>
+        <p class="card-desc">Upload a CSV of transaction/account logs. A real identifier-sharing graph is built over your rows and splits into connected clusters live, in your browser — no GPU or GNN loaded server-side for this view. <b style="color:var(--text);">Scoring here is a disclosed structural heuristic</b> (cluster size + number of distinct identifier types shared) — not the trained CA-HGAT model used on the four benchmark datasets elsewhere in this app. Running that on arbitrary uploads would mean loading the full torch/dgl stack into the live serving process just for this demo; this view shows the same underlying mechanism — real shared-identifier graph construction — honestly, without pretending it's the trained model.</p>
+
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="file-input" accept=".csv" hidden>
+          <div class="dropzone-icon">⇪</div>
+          <div><b>Drop a CSV here</b> or click to browse</div>
+          <div style="color:var(--text3);font-size:11.5px;margin-top:4px;">looks for columns like device_id, ip_address, phone, bank_account_id, vpa, merchant</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+          <button class="ghost" id="use-sample-btn">Use sample log file instead</button>
+          <span id="pipeline-filename" style="color:var(--text2);font-size:12.5px;"></span>
+        </div>
+
+        <div id="pipeline-console-wrap" hidden>
+          <div class="pipeline-console" id="pipeline-console"></div>
+        </div>
+        <div id="pipeline-graph-wrap" class="network-wrap" style="margin-top:16px;display:none;height:380px;"><svg id="pipeline-svg"></svg></div>
+        <div id="pipeline-summary"></div>
+        <div id="pipeline-rings"></div>
+      </div>
+    </section>
+
+    <!-- NETWORK EXPLORER -->
+    <section class="view" id="view-network">
+      <div class="card">
+        <div class="card-head"><h2>Ring Network Explorer</h2><span class="pill-badge">top 25 highest-score groups</span></div>
+        <p class="card-desc">Real bipartite structure: small hub nodes are detected shared-identifier groups, dots are individual accounts/reviews connected to every group they belong to — the same topology CA-HGAT's own message passing runs over. Drag nodes, scroll to zoom, click one to open its case.</p>
+        <div class="network-wrap"><svg id="network-svg"></svg></div>
+        <div class="network-legend">
+          <span><i class="legend-dot" style="background:#FF5C72"></i> labeled fraud/abuse</span>
+          <span><i class="legend-dot" style="background:#12E6C8"></i> labeled clean</span>
+          <span><i class="legend-dot" style="background:#3a4055"></i> unlabeled</span>
+          <span><i class="legend-dot" style="background:#5F6579"></i> shared-identifier hub</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- OVERVIEW -->
+    <section class="view" id="view-overview">
+      <div class="hero-canvas-wrap">
+        <canvas id="ring-canvas"></canvas>
+        <div class="hero-overlay">
+          <h2 id="hero-title">Loading dataset…</h2>
+          <p id="hero-sub"></p>
+        </div>
+      </div>
+
+      <div class="stat-row" id="stats"></div>
+
+      <div class="card">
+        <div class="card-head"><h2>Cost-aware decision threshold</h2><span class="pill-badge acc" id="threshold-mode-badge">auto-selected</span></div>
+        <p class="card-desc">The operating point is not a manual dial — it's chosen by sweeping every threshold against real held-out test predictions and picking the one that minimizes total cost (missed-ring cost + false-flag friction cost). Re-selected automatically per dataset, per cost assumption.</p>
+        <div class="cost-curve-wrap">
+          <canvas id="cost-curve-canvas"></canvas>
+        </div>
+        <div class="slider-stats">
+          <div class="slider-stat"><span>Chosen threshold</span><b id="stat-threshold">–</b></div>
+          <div class="slider-stat"><span>Precision</span><b id="stat-precision">-</b></div>
+          <div class="slider-stat"><span>Recall</span><b id="stat-recall">-</b></div>
+          <div class="slider-stat"><span>Flagged</span><b id="stat-flagrate">-</b></div>
+          <div class="slider-stat"><span>Min. cost</span><b id="stat-cost">-</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CASES -->
+    <section class="view" id="view-cases">
+      <div class="card">
+        <div class="card-head">
+          <h2>Ring case queue</h2>
+          <div style="display:flex;gap:8px;">
+            <a id="csv-export-link" href="#"><button class="ghost">⭳ Export CSV</button></a>
+          </div>
+        </div>
+        <div class="filters">
+          <select id="filter-status">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed_ring">Confirmed ring</option>
+            <option value="dismissed">Dismissed</option>
+          </select>
+          <select id="filter-relation"><option value="">All relations</option></select>
+        </div>
+        <div class="bulk-bar" id="bulk-bar">
+          <span id="bulk-count" style="font-size:12.5px;font-weight:700;"></span>
+          <input id="bulk-reviewer" placeholder="Your name" style="width:150px;">
+          <button class="danger-btn" id="bulk-confirm">Confirm all</button>
+          <button class="primary" id="bulk-dismiss">Dismiss all</button>
+        </div>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th style="width:24px;"><input type="checkbox" id="select-all"></th><th>Relation</th><th>Group</th><th>Size</th><th>Score</th><th>Split</th><th>Age</th><th>Status</th></tr></thead>
+          <tbody id="case-rows"></tbody>
+        </table>
+        </div>
+        <div id="case-empty" class="empty-state" style="display:none;">No cases match this filter.</div>
+      </div>
+    </section>
+
+    <!-- WATCHLIST -->
+    <section class="view" id="view-watchlist">
+      <div class="card">
+        <div class="card-head"><h2>Confirmed-identifier watchlist</h2><span class="pill-badge">auto-populated</span></div>
+        <p class="card-desc">Populated automatically when a case is confirmed as a ring. Any future case sharing one of these values gets flagged regardless of its own model score.</p>
+        <div id="watchlist-content"></div>
+      </div>
+    </section>
+
+    <!-- INTEL -->
+    <section class="view" id="view-intel">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h2>Ring-formation spikes</h2></div>
+          <p class="card-desc">Flagged-account count per time bucket, z-scored against the dataset's own distribution.</p>
+          <div id="spikes-content"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Per-segment thresholds</h2><span class="pill-badge">UPI only</span></div>
+          <p class="card-desc">Cost-optimal threshold computed separately per city — the same mechanism applies per-merchant once merchant-tagged data exists.</p>
+          <div id="segments-content"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+<div class="drawer" id="drawer"></div>
+<div id="toasts"></div>
+
+<script>
+const API = "/api";
+let currentDataset = "upi";
+let currentView = "screen";
+let currentMetrics = null;
+let currentCases = [];
+const DATASETS = ["yelp", "amazon", "elliptic", "upi"];
+const DATASET_META = {
+  yelp: {label:"Yelp", tagline:"Review-fraud rings — CARE-GNN published benchmark"},
+  amazon: {label:"Amazon", tagline:"Review-fraud rings — plain baseline collapses without the ring mechanism"},
+  elliptic: {label:"Elliptic", tagline:"Real Bitcoin AML transactions — Weber et al. 2019"},
+  upi: {label:"UPI", tagline:"Synthetic camouflaged mule-ring simulation"},
+};
+
+function fetchJSON(url, opts){ return fetch(url, opts).then(r => { if(!r.ok) return r.text().then(t=>{throw new Error(t)}); return r.json(); }); }
+function fmt3(x){ return x==null ? "-" : x.toFixed(3); }
+function fmtPct(x){ return x==null ? "-" : (x*100).toFixed(1)+"%"; }
+function fmtAge(d){ if(d==null) return "-"; return d<1 ? Math.round(d*24)+"h" : Math.round(d)+"d"; }
+
+function toast(msg, ok=true){
+  const el = document.createElement("div");
+  el.className = "toast" + (ok? " ok":"");
+  el.textContent = msg;
+  document.getElementById("toasts").appendChild(el);
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .3s"; setTimeout(()=>el.remove(),300); }, 2600);
+}
+
+// ---------- animated count-up ----------
+function countUp(el, target, decimals=3, duration=700){
+  const start = parseFloat(el.dataset.val || 0);
+  const t0 = performance.now();
+  function tick(now){
+    const p = Math.min(1, (now-t0)/duration);
+    const eased = 1 - Math.pow(1-p, 3);
+    const val = start + (target-start)*eased;
+    el.textContent = val.toFixed(decimals);
+    if(p<1) requestAnimationFrame(tick); else el.dataset.val = target;
+  }
+  requestAnimationFrame(tick);
+}
+
+// ---------- background ambient network canvas ----------
+(function ambientNetwork(){
+  const canvas = document.getElementById("bg-canvas");
+  const ctx = canvas.getContext("2d");
+  let w,h,nodes=[];
+  function resize(){ w=canvas.width=innerWidth; h=canvas.height=innerHeight; }
+  resize(); addEventListener("resize", resize);
+  const N = 46;
+  for(let i=0;i<N;i++) nodes.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*.15,vy:(Math.random()-.5)*.15});
+  function frame(){
+    ctx.clearRect(0,0,w,h);
+    for(const n of nodes){
+      n.x+=n.vx; n.y+=n.vy;
+      if(n.x<0||n.x>w) n.vx*=-1;
+      if(n.y<0||n.y>h) n.vy*=-1;
+    }
+    for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+      const a=nodes[i], b=nodes[j];
+      const d = Math.hypot(a.x-b.x, a.y-b.y);
+      if(d<140){
+        ctx.strokeStyle = `rgba(18,230,200,${0.08*(1-d/140)})`;
+        ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      }
+    }
+    for(const n of nodes){
+      ctx.fillStyle="rgba(18,230,200,0.35)";
+      ctx.beginPath(); ctx.arc(n.x,n.y,1.6,0,7); ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ---------- hero ring canvas (per-dataset decorative graph) ----------
+function drawHeroGraph(nPos, nNeg){
+  const canvas = document.getElementById("ring-canvas");
+  const parent = canvas.parentElement;
+  canvas.width = parent.clientWidth; canvas.height = parent.clientHeight;
+  const ctx = canvas.getContext("2d");
+  const w=canvas.width, h=canvas.height;
+  const total = Math.min(60, 14 + Math.round(nPos));
+  const nodes = [];
+  const cx = w*0.72, cy = h*0.5;
+  for(let i=0;i<total;i++){
+    const ring = i % 3;
+    const angle = (i/total)*Math.PI*2 + ring;
+    const r = 30 + ring*32;
+    nodes.push({x:cx+Math.cos(angle)*r, y:cy+Math.sin(angle)*r, bad: i%5===0, phase: Math.random()*10});
+  }
+  let t=0;
+  function frame(){
+    t+=0.02;
+    ctx.clearRect(0,0,w,h);
+    for(let i=0;i<nodes.length;i++) for(let j=i+1;j<nodes.length;j++){
+      if(Math.random()>0.9985) continue;
+      const a=nodes[i], b=nodes[j];
+      const d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(d<70){
+        ctx.strokeStyle = (a.bad&&b.bad) ? "rgba(255,92,114,0.18)" : "rgba(255,255,255,0.05)";
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      }
+    }
+    for(const n of nodes){
+      const pulse = 2.2 + Math.sin(t+n.phase)*0.8;
+      ctx.fillStyle = n.bad ? "#FF5C72" : "rgba(18,230,200,0.55)";
+      ctx.shadowColor = n.bad ? "rgba(255,92,114,0.6)" : "rgba(18,230,200,0.4)";
+      ctx.shadowBlur = n.bad ? 8 : 4;
+      ctx.beginPath(); ctx.arc(n.x,n.y,pulse,0,7); ctx.fill();
+    }
+    ctx.shadowBlur=0;
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ---------- shared real force-directed graph renderer (D3) ----------
+// Draws the actual bipartite member<->group topology returned by the API -
+// hub nodes are real detected groups, member nodes are real accounts/
+// reviews, edges are real membership, never a fabricated mesh.
+let graphTooltipEl = null;
+function graphTooltip(){
+  if(!graphTooltipEl){
+    graphTooltipEl = document.createElement("div");
+    graphTooltipEl.className = "graph-tooltip"; graphTooltipEl.hidden = true;
+    document.body.appendChild(graphTooltipEl);
+  }
+  return graphTooltipEl;
+}
+function nodeColor(d, highlightId){
+  if(highlightId && d.id===highlightId) return "#FFB84D";
+  if(d.kind==="hub") return "#5F6579";
+  if(d.label===1) return "#FF5C72";
+  if(d.label===0) return "#12E6C8";
+  return "#3a4055";
+}
+function renderForceGraph(svgEl, nodes, edges, opts={}){
+  const svg = d3.select(svgEl);
+  svg.selectAll("*").remove();
+  const rect = svgEl.getBoundingClientRect();
+  const width = rect.width || 600, height = rect.height || 300;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+  const g = svg.append("g");
+  svg.call(d3.zoom().scaleExtent([0.35,3.5]).on("zoom", e => g.attr("transform", e.transform)));
+
+  const nodesCopy = nodes.map(d=>({...d}));
+  const edgesCopy = edges.map(d=>({...d}));
+
+  const sim = d3.forceSimulation(nodesCopy)
+    .force("link", d3.forceLink(edgesCopy).id(d=>d.id).distance(d => (d.source.kind==="hub"||d.target.kind==="hub") ? 42 : 90).strength(0.9))
+    .force("charge", d3.forceManyBody().strength(-110))
+    .force("center", d3.forceCenter(width/2, height/2))
+    .force("collide", d3.forceCollide(d => d.kind==="hub" ? 12+Math.min(14,(d.size||1)) : 9));
+
+  const link = g.append("g").selectAll("line").data(edgesCopy).join("line")
+    .attr("stroke", "rgba(255,255,255,0.10)").attr("stroke-width", 1.1);
+
+  const node = g.append("g").selectAll("circle").data(nodesCopy).join("circle")
+    .attr("r", d => d.kind==="hub" ? Math.min(20, 8+(d.size||1)*0.9) : 5+((d.score||0)*4))
+    .attr("fill", d => nodeColor(d, opts.highlightId))
+    .attr("stroke", d => (opts.highlightId && d.id===opts.highlightId) ? "#fff" : "rgba(0,0,0,0.3)")
+    .attr("stroke-width", d => (opts.highlightId && d.id===opts.highlightId) ? 2.5 : 1)
+    .style("cursor", d => d.kind==="hub" ? "pointer" : "default")
+    .call(d3.drag()
+      .on("start", (ev,d)=>{ if(!ev.active) sim.alphaTarget(0.25).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag", (ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
+      .on("end", (ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+    .on("mouseenter", (ev,d)=>{
+      const tip = graphTooltip();
+      const sub = d.merchant ? `merchant: ${d.merchant}` : (d.city ? d.city : "");
+      tip.innerHTML = d.kind==="hub"
+        ? `<b>${d.relation}</b><br>${d.label_text}<br>score ${fmt3(d.score)} · ${d.size} members`
+        : `<b>${d.vpa || ('id '+d.raw_id)}</b>${sub?`<br>${sub}`:""}<br>score ${fmt3(d.score)}${d.label!=null?` · label ${d.label}`:""}`;
+      tip.hidden = false;
+    })
+    .on("mousemove", ev=>{ const tip=graphTooltip(); tip.style.left=(ev.clientX+14)+"px"; tip.style.top=(ev.clientY+10)+"px"; })
+    .on("mouseleave", ()=>{ graphTooltip().hidden = true; })
+    .on("click", (ev,d)=>{ if(d.kind==="hub" && opts.onHubClick) opts.onHubClick(d); });
+
+  sim.on("tick", () => {
+    link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y).attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+    node.attr("cx", d=>d.x).attr("cy", d=>d.y);
+  });
+  return sim;
+}
+
+// ---------- Live Risk Check ----------
+async function loadScreenExamples(){
+  const el = document.getElementById("screen-examples");
+  try{
+    const examples = await fetchJSON(`${API}/datasets/${currentDataset}/lookup/examples`);
+    el.innerHTML = examples.map(e=>`<span class="chip" data-v="${e.value}">try: ${e.value} <span style="opacity:.6;">(${e.label})</span></span>`).join("");
+    el.querySelectorAll(".chip").forEach(chip=>{
+      chip.onclick = () => { document.getElementById("screen-input").value = chip.dataset.v; runScreen(); };
+    });
+  }catch(e){ el.innerHTML = ""; }
+}
+
+function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function runScreen(){
+  const q = document.getElementById("screen-input").value.trim();
+  const resultEl = document.getElementById("screen-result");
+  if(!q){ return; }
+  resultEl.innerHTML = `<div class="scan-line"></div><p style="margin-top:10px;color:var(--text3);font-size:12px;">scanning ${currentDataset} ring index…</p>`;
+  let data;
+  try{
+    [data] = await Promise.all([fetchJSON(`${API}/datasets/${currentDataset}/lookup?q=${encodeURIComponent(q)}`), wait(350)]);
+  }catch(e){ resultEl.innerHTML = `<div class="empty-state">Lookup failed.</div>`; return; }
+
+  if(!data.matches.length){
+    resultEl.innerHTML = `
+      <div class="verdict-card clean">
+        <div class="verdict-title"><span class="verdict-icon">✓</span> Clean — no ring match</div>
+        <p style="color:var(--text2);font-size:13px;">"${data.query}" does not appear in any of the ${data.scanned_groups} scored groups for ${currentDataset}. No shared identifier, no group membership found.</p>
+      </div>`;
+    return;
+  }
+
+  const m = data.matches[0];
+  const highlightId = m.matched_member_id!=null ? `m:${m.matched_member_id}` : `hub:${m.relation}:${m.group_index}`;
+  const nodes = [{id:`hub:${m.relation}:${m.group_index}`, kind:"hub", relation:m.relation, score:m.score, size:m.size, label_text: Object.entries(m.evidence).filter(([k])=>k!=="relation").map(([k,v])=>`${k}=${v}`).join(", ") || m.relation}];
+  const edges = [];
+  m.members.forEach(mm=>{
+    const mid = `m:${mm.id}`;
+    nodes.push({id:mid, kind:"member", raw_id:mm.id, score:mm.score, label:mm.label, vpa:mm.vpa, city:mm.city});
+    edges.push({source:mid, target:nodes[0].id});
+  });
+
+  resultEl.innerHTML = `
+    <div class="verdict-card hit">
+      <div class="verdict-title"><span class="verdict-icon">⚠</span> Ring match — "${data.query}"</div>
+      <p style="color:var(--text2);font-size:13px;">Matched via <b style="color:var(--text);font-family:var(--font-mono);">${m.matched_via}</b> into a <b style="color:var(--text);font-family:var(--font-mono);">${m.relation}</b> group.</p>
+      <div class="verdict-meta">
+        <span>Score <b>${fmt3(m.score)}</b></span>
+        <span>Ring size <b>${m.size}</b></span>
+        <span>Split <b>${m.bucket}</b></span>
+        <span>Status <b>${m.status.replace("_"," ")}</b></span>
+        ${m.on_watchlist? '<span class="watch-flag">⚠ ON WATCHLIST</span>':''}
+      </div>
+      <div class="policy-box"><b>${m.policy_recommendation.action.replace("_"," ")}</b><br><span style="color:var(--text2);">${m.policy_recommendation.reason} (via ${m.policy_recommendation.triggered_by})</span></div>
+      <div class="verdict-graph-wrap"><svg id="screen-graph-svg"></svg></div>
+      <div style="margin-top:12px;"><button class="primary" id="screen-open-case">Open full case</button></div>
+    </div>`;
+  renderForceGraph(document.getElementById("screen-graph-svg"), nodes, edges, {highlightId});
+  document.getElementById("screen-open-case").onclick = () => openCase(m.relation, m.group_index);
+}
+document.getElementById("screen-btn").onclick = runScreen;
+document.getElementById("screen-input").addEventListener("keydown", e => { if(e.key==="Enter") runScreen(); });
+
+// ---------- Network Explorer ----------
+let networkLoadedFor = null;
+async function loadNetwork(){
+  if(networkLoadedFor === currentDataset) return;
+  networkLoadedFor = currentDataset;
+  const svg = document.getElementById("network-svg");
+  try{
+    const g = await fetchJSON(`${API}/datasets/${currentDataset}/graph?limit=25`);
+    if(!g.nodes.length){ svg.parentElement.innerHTML = `<div class="graph-empty-note">No groups to visualize for this dataset.</div>`; return; }
+    renderForceGraph(svg, g.nodes, g.edges, {onHubClick: d => { const [, relation, gi] = d.id.split(":"); openCase(relation, parseInt(gi)); }});
+  }catch(e){ svg.parentElement.innerHTML = `<div class="graph-empty-note">Graph not available.</div>`; }
+}
+
+// ---------- Upload & Trace: incremental force graph that reveals rings as they're detected ----------
+function renderPipelineGraph(svgEl, nodes){
+  const svg = d3.select(svgEl);
+  svg.selectAll("*").remove();
+  const rect = svgEl.getBoundingClientRect();
+  const width = rect.width || 600, height = rect.height || 300;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+  const g = svg.append("g");
+  svg.call(d3.zoom().scaleExtent([0.35,3.5]).on("zoom", e => g.attr("transform", e.transform)));
+
+  const nodesCopy = nodes.map(d => ({...d, x: width/2+(Math.random()-0.5)*260, y: height/2+(Math.random()-0.5)*220}));
+  const linkForce = d3.forceLink([]).id(d=>d.id).distance(d => (d.source.kind==="hub"||d.target.kind==="hub") ? 42 : 90).strength(0.9);
+  const sim = d3.forceSimulation(nodesCopy)
+    .force("link", linkForce)
+    .force("charge", d3.forceManyBody().strength(-90))
+    .force("center", d3.forceCenter(width/2, height/2))
+    .force("collide", d3.forceCollide(d => d.kind==="hub" ? 12+Math.min(14,(d.size||1)) : 9));
+
+  const linkLayer = g.append("g");
+  let linkSel = linkLayer.selectAll("line");
+  const nodeSel = g.append("g").selectAll("circle").data(nodesCopy).join("circle")
+    .attr("r", d => d.kind==="hub" ? Math.min(20, 8+(d.size||1)*0.9) : 5+((d.score||0)*4))
+    .attr("fill", d => nodeColor(d))
+    .attr("stroke", "rgba(0,0,0,0.3)").attr("stroke-width", 1)
+    .call(d3.drag()
+      .on("start", (ev,d)=>{ if(!ev.active) sim.alphaTarget(0.25).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag", (ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
+      .on("end", (ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+    .on("mouseenter", (ev,d)=>{
+      const tip = graphTooltip();
+      const sub = d.merchant ? `merchant: ${d.merchant}` : (d.city || "");
+      tip.innerHTML = d.kind==="hub" ? `<b>${d.relation}</b><br>${d.label_text}` : `<b>${d.vpa || ('row '+d.raw_id)}</b>${sub?`<br>${sub}`:""}`;
+      tip.hidden = false;
+    })
+    .on("mousemove", ev=>{ const tip=graphTooltip(); tip.style.left=(ev.clientX+14)+"px"; tip.style.top=(ev.clientY+10)+"px"; })
+    .on("mouseleave", ()=>{ graphTooltip().hidden = true; });
+
+  sim.on("tick", () => {
+    linkSel.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y).attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+    nodeSel.attr("cx", d=>d.x).attr("cy", d=>d.y);
+  });
+
+  sim._linkForce = linkForce;
+  sim._addLinks = (newLinks, colorHex) => {
+    const merged = linkForce.links().concat(newLinks);
+    linkForce.links(merged); // re-resolves source/target ids against the sim's node array
+    linkSel = linkLayer.selectAll("line").data(linkForce.links(), d => (d.source.id||d.source)+"->"+(d.target.id||d.target))
+      .join(enter => enter.append("line")
+        .attr("stroke", "rgba(255,255,255,0.02)").attr("stroke-width", 1.1)
+        .transition().duration(400).attr("stroke", colorHex));
+    sim.alpha(0.7).restart();
+  };
+  sim._flashNodes = (idSet, colorHex) => {
+    nodeSel.filter(d => idSet.has(d.id))
+      .transition().duration(200).attr("stroke", colorHex).attr("stroke-width", 2.5)
+      .transition().delay(500).duration(500).attr("stroke", "rgba(0,0,0,0.3)").attr("stroke-width", 1);
+  };
+  return sim;
+}
+
+function addRingToPipelineGraph(sim, allEdges, ring){
+  const memberIds = new Set(ring.members.map(m => `m:${m.row_index}`));
+  const relevantEdges = allEdges.filter(e => memberIds.has(e.source) || memberIds.has(e.target));
+  const colorHex = ring.flagged ? "rgba(255,92,114,0.4)" : "rgba(18,230,200,0.35)";
+  sim._addLinks(relevantEdges.map(e => ({source:e.source, target:e.target})), colorHex);
+  sim._flashNodes(memberIds, ring.flagged ? "#FF5C72" : "#12E6C8");
+}
+
+function logLine(el, text, cls=""){
+  const d = document.createElement("div");
+  d.className = "log-line" + (cls ? ` ${cls}` : "");
+  d.textContent = "> " + text;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function runPipeline(file){
+  document.getElementById("pipeline-filename").textContent = file.name;
+  const consoleWrap = document.getElementById("pipeline-console-wrap");
+  const consoleEl = document.getElementById("pipeline-console");
+  const graphWrap = document.getElementById("pipeline-graph-wrap");
+  const summaryEl = document.getElementById("pipeline-summary");
+  const ringsEl = document.getElementById("pipeline-rings");
+  consoleWrap.hidden = false; consoleEl.innerHTML = "";
+  graphWrap.style.display = "none"; summaryEl.innerHTML = ""; ringsEl.innerHTML = "";
+  logLine(consoleEl, `reading ${file.name}…`);
+
+  const fd = new FormData(); fd.append("file", file);
+  let data;
+  try{
+    data = await fetchJSON(`${API}/pipeline/trace`, {method:"POST", body:fd});
+  }catch(e){
+    logLine(consoleEl, `error: ${e.message}`, "flag");
+    return;
+  }
+  logLine(consoleEl, `parsed ${data.row_count} rows — columns detected: ${data.columns_used.join(", ") || "none"}`);
+  await wait(250);
+  logLine(consoleEl, `building shared-identifier graph…`);
+  await wait(250);
+  logLine(consoleEl, `${data.rings.length} connected cluster(s) of size ≥3 found · ${data.clean_count} rows with no meaningful overlap`);
+  await wait(300);
+
+  graphWrap.style.display = "block";
+  const sim = renderPipelineGraph(document.getElementById("pipeline-svg"), data.graph.nodes);
+
+  for(const ring of data.rings){
+    await wait(550);
+    logLine(consoleEl, `ring #${ring.ring_id} — ${ring.size} accounts — shares ${ring.shared_via.join(" + ")} — score ${ring.score.toFixed(2)} — ${ring.flagged?"FLAGGED":"below threshold"}`, ring.flagged?"flag":"ok");
+    addRingToPipelineGraph(sim, data.graph.edges, ring);
+  }
+  await wait(400);
+  summaryEl.innerHTML = `<div class="verdict-meta" style="margin-top:14px;"><span>Rows <b>${data.row_count}</b></span><span>Flagged rings <b>${data.flagged_count}</b></span><span>Clean rows <b>${data.clean_count}</b></span></div>`;
+  ringsEl.innerHTML = data.rings.map(r => `
+    <div class="ring-card">
+      <div class="ring-card-head">
+        <b>Ring #${r.ring_id} · ${r.size} accounts</b>
+        <span class="status-pill ${r.flagged?'confirmed_ring':'pending'}">${r.flagged?'flagged':'below threshold'}</span>
+      </div>
+      <div style="color:var(--text2);font-size:12.5px;margin-top:6px;">shares <b style="color:var(--text)">${r.shared_via.join(", ")}</b> · score <b style="color:var(--text)">${r.score.toFixed(2)}</b></div>
+      ${r.merchants.length ? `<div style="margin-top:8px;">merchants implicated: ${r.merchants.map(m=>`<span class="merchant-chip">${m}</span>`).join("")}</div>` : ""}
+    </div>`).join("");
+}
+
+const dropzone = document.getElementById("dropzone");
+dropzone.onclick = () => document.getElementById("file-input").click();
+document.getElementById("file-input").onchange = e => { if(e.target.files[0]) runPipeline(e.target.files[0]); };
+["dragover","dragleave","drop"].forEach(evt => {
+  dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropzone.classList.toggle("drag", evt==="dragover");
+    if(evt==="drop" && e.dataTransfer.files[0]) runPipeline(e.dataTransfer.files[0]);
+  });
+});
+document.getElementById("use-sample-btn").onclick = async () => {
+  const csvText = await (await fetch(`${API}/pipeline/sample.csv`)).text();
+  runPipeline(new File([new Blob([csvText], {type:"text/csv"})], "sample_logs.csv", {type:"text/csv"}));
+};
+
+// ---------- nav / view switching ----------
+document.querySelectorAll(".nav-item").forEach(el=>{
+  el.onclick = () => setView(el.dataset.view);
+});
+function setView(v){
+  currentView = v;
+  document.querySelectorAll(".nav-item").forEach(el=>el.classList.toggle("active", el.dataset.view===v));
+  document.querySelectorAll(".view").forEach(el=>el.classList.toggle("active", el.id==="view-"+v));
+  const titles = {screen:"Live Risk Check", network:"Network Explorer", overview:"Model Performance", cases:"Case Queue", watchlist:"Watchlist", intel:"Intelligence"};
+  document.getElementById("topbar-title").textContent = titles[v];
+  document.getElementById("topbar-sub").textContent = DATASET_META[currentDataset].tagline;
+  if(v==="network" && currentDataset) loadNetwork();
+}
+
+function renderDatasetButtons(list){
+  const el = document.getElementById("ds-buttons");
+  el.innerHTML = "";
+  DATASETS.forEach(ds=>{
+    const info = list.find(d=>d.dataset===ds);
+    const btn = document.createElement("div");
+    btn.className = "ds-btn" + (ds===currentDataset ? " active":"");
+    btn.innerHTML = `<span style="display:flex;align-items:center;gap:8px;"><span class="ds-dot"></span>${DATASET_META[ds].label}</span>` +
+      (info ? `<span class="ds-kind ${info.kind}">${info.kind==='real'?'real':'synth'}</span>` : "");
+    btn.onclick = () => { currentDataset = ds; loadDataset(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderStats(info){
+  const m = info.node_test_metrics || {};
+  const row = document.getElementById("stats");
+  const cards = [
+    {v:m.auc, l:"Test AUC"}, {v:m.precision, l:"Precision @0.5"},
+    {v:m.recall, l:"Recall @0.5"}, {v:m.f1 ?? (2*m.precision*m.recall/(m.precision+m.recall||1)), l:"F1 @0.5"},
+  ];
+  row.innerHTML = cards.map((c,i)=>`<div class="stat-card"><div class="stat-val" id="stat-anim-${i}" data-val="0">0.000</div><div class="stat-label">${c.l}</div></div>`).join("");
+  cards.forEach((c,i)=> countUp(document.getElementById(`stat-anim-${i}`), c.v ?? 0));
+}
+
+function computeAtThreshold(probs, labels, t, fnCost, fpCost){
+  let tp=0,fp=0,fn=0;
+  for(let i=0;i<probs.length;i++){
+    const pred = probs[i]>=t, y = labels[i]===1;
+    if(pred&&y) tp++; else if(pred&&!y) fp++; else if(!pred&&y) fn++;
+  }
+  return {
+    precision: (tp+fp)>0 ? tp/(tp+fp) : 0,
+    recall: (tp+fn)>0 ? tp/(tp+fn) : 0,
+    flagRate: (tp+fp)/probs.length,
+    cost: fn*fnCost + fp*fpCost,
+  };
+}
+
+// Sweeps every threshold against real held-out predictions and returns the
+// full cost curve plus the argmin — this is what picks the operating point,
+// not a person dragging a control.
+function sweepCostCurve(probs, labels, fnCost, fpCost, steps=200){
+  const curve = [];
+  let best = null;
+  for(let i=0;i<=steps;i++){
+    const t = i/steps;
+    const r = computeAtThreshold(probs, labels, t, fnCost, fpCost);
+    curve.push({t, ...r});
+    if(best===null || r.cost < best.cost) best = {t, ...r};
+  }
+  return {curve, best};
+}
+
+function drawCostCurve(canvas, curve, best, animate=true){
+  const parent = canvas.parentElement;
+  const w = canvas.width = parent.clientWidth * devicePixelRatio;
+  const h = canvas.height = parent.clientHeight * devicePixelRatio;
+  canvas.style.width = parent.clientWidth+"px"; canvas.style.height = parent.clientHeight+"px";
+  const ctx = canvas.getContext("2d");
+  const pad = {l:14*devicePixelRatio, r:14*devicePixelRatio, t:16*devicePixelRatio, b:14*devicePixelRatio};
+  const plotW = w-pad.l-pad.r, plotH = h-pad.t-pad.b;
+  const maxCost = Math.max(...curve.map(p=>p.cost)) || 1;
+  const xOf = t => pad.l + t*plotW;
+  const yOf = c => pad.t + plotH - (c/maxCost)*plotH;
+
+  function drawUpTo(frac){
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle="rgba(255,255,255,0.06)";
+    ctx.lineWidth = devicePixelRatio;
+    for(let g=0;g<=4;g++){ const y=pad.t+plotH*g/4; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); }
+
+    const n = Math.max(2, Math.floor(curve.length*frac));
+    const slice = curve.slice(0, n);
+
+    const grad = ctx.createLinearGradient(0,pad.t,0,h-pad.b);
+    grad.addColorStop(0,"rgba(18,230,200,0.28)"); grad.addColorStop(1,"rgba(18,230,200,0)");
+    ctx.beginPath(); ctx.moveTo(xOf(slice[0].t), yOf(slice[0].cost));
+    slice.forEach(p=>ctx.lineTo(xOf(p.t), yOf(p.cost)));
+    ctx.lineTo(xOf(slice[slice.length-1].t), yOf(0)); ctx.lineTo(xOf(slice[0].t), yOf(0)); ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+
+    ctx.beginPath(); ctx.moveTo(xOf(slice[0].t), yOf(slice[0].cost));
+    slice.forEach(p=>ctx.lineTo(xOf(p.t), yOf(p.cost)));
+    ctx.strokeStyle="#12E6C8"; ctx.lineWidth=2*devicePixelRatio; ctx.stroke();
+
+    if(frac>=1){
+      const bx=xOf(best.t), by=yOf(best.cost);
+      ctx.strokeStyle="rgba(255,92,114,0.5)"; ctx.setLineDash([4*devicePixelRatio,4*devicePixelRatio]); ctx.lineWidth=devicePixelRatio;
+      ctx.beginPath(); ctx.moveTo(bx,pad.t); ctx.lineTo(bx,h-pad.b); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle="#FF5C72"; ctx.shadowColor="rgba(255,92,114,0.7)"; ctx.shadowBlur=10*devicePixelRatio;
+      ctx.beginPath(); ctx.arc(bx,by,5*devicePixelRatio,0,7); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.fillStyle="#EBEDF5"; ctx.font=`${11*devicePixelRatio}px 'JetBrains Mono', monospace`;
+      const label = `t*=${best.t.toFixed(3)}`;
+      const lx = Math.min(Math.max(bx-18*devicePixelRatio, pad.l), w-pad.r-60*devicePixelRatio);
+      ctx.fillText(label, lx, by-10*devicePixelRatio);
+    }
+  }
+
+  if(!animate){ drawUpTo(1); return; }
+  const t0 = performance.now(), dur=900;
+  function tick(now){
+    const p = Math.min(1, (now-t0)/dur);
+    drawUpTo(1 - Math.pow(1-p,3));
+    if(p<1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function updateAutoThreshold(){
+  if(!currentMetrics?.test_probs) return;
+  const fnCost = currentMetrics.cost_constants?.fn_cost ?? 500;
+  const fpCost = currentMetrics.cost_constants?.fp_cost ?? 15;
+  const {curve, best} = sweepCostCurve(currentMetrics.test_probs, currentMetrics.test_labels, fnCost, fpCost);
+  document.getElementById("stat-threshold").textContent = best.t.toFixed(3);
+  document.getElementById("stat-precision").textContent = fmt3(best.precision);
+  document.getElementById("stat-recall").textContent = fmt3(best.recall);
+  document.getElementById("stat-flagrate").textContent = fmtPct(best.flagRate);
+  document.getElementById("stat-cost").textContent = Math.round(best.cost).toLocaleString();
+  drawCostCurve(document.getElementById("cost-curve-canvas"), curve, best);
+}
+addEventListener("resize", () => { if(currentMetrics?.test_probs) updateAutoThreshold(); });
+
+async function loadDataset(){
+  networkLoadedFor = null;
+  document.getElementById("screen-result").innerHTML = "";
+  document.getElementById("screen-input").value = "";
+  loadScreenExamples();
+  if(currentView==="network") loadNetwork();
+
+  const list = await fetchJSON(`${API}/datasets`);
+  renderDatasetButtons(list);
+  const info = list.find(d=>d.dataset===currentDataset);
+  if(info) renderStats(info);
+  document.getElementById("topbar-sub").textContent = DATASET_META[currentDataset].tagline;
+
+  currentMetrics = await fetchJSON(`${API}/datasets/${currentDataset}/metrics`);
+  updateAutoThreshold();
+
+  document.getElementById("hero-title").textContent = `${DATASET_META[currentDataset].label} — ${currentDataset==='upi'?'synthetic demo':'real benchmark'}`;
+  document.getElementById("hero-sub").textContent = `Test AUC ${fmt3(currentMetrics.node_test_metrics.auc)} · Recall ${fmt3(currentMetrics.node_test_metrics.recall)} — live network view of flagged accounts`;
+
+  await Promise.all([loadCases(), loadWatchlist(), loadSegments(), loadSpikes()]);
+  drawHeroGraph(currentMetrics.node_test_metrics.recall*40, 20);
+}
+
+async function loadCases(){
+  const status = document.getElementById("filter-status").value;
+  const relation = document.getElementById("filter-relation").value;
+  const params = new URLSearchParams();
+  if(status) params.set("status", status);
+  if(relation) params.set("relation", relation);
+  currentCases = await fetchJSON(`${API}/datasets/${currentDataset}/cases?${params}`);
+  document.getElementById("nav-case-count").textContent = currentCases.length;
+  document.getElementById("csv-export-link").href = `${API}/datasets/${currentDataset}/cases/export.csv` + (status?`?status=${status}`:"");
+
+  const relSelect = document.getElementById("filter-relation");
+  const relations = [...new Set(currentCases.map(c=>c.relation))];
+  relSelect.innerHTML = `<option value="">All relations</option>` + relations.map(r=>`<option value="${r}">${r}</option>`).join("");
+
+  const tbody = document.getElementById("case-rows");
+  tbody.innerHTML = "";
+  document.getElementById("case-empty").style.display = currentCases.length ? "none":"block";
+  currentCases.forEach(c=>{
+    const tr = document.createElement("tr");
+    tr.className = "case-row";
+    const watch = c.on_watchlist ? `<span class="watch-flag">⚠ WATCH</span>` : "";
+    tr.innerHTML = `<td onclick="event.stopPropagation()"><input type="checkbox" class="case-check" data-relation="${c.relation}" data-gi="${c.group_index}"></td>
+      <td>${c.relation}</td><td class="mono-cell">#${c.group_index}</td><td>${c.size}</td>
+      <td class="mono-cell">${fmt3(c.score)}${watch}</td><td>${c.bucket}</td><td class="mono-cell">${fmtAge(c.age_days)}</td>
+      <td><span class="status-pill ${c.status}">${c.status.replace("_"," ")}</span></td>`;
+    tr.onclick = () => openCase(c.relation, c.group_index);
+    tbody.appendChild(tr);
+  });
+  wireBulkBar();
+}
+
+function wireBulkBar(){
+  const bar = document.getElementById("bulk-bar");
+  const checks = () => Array.from(document.querySelectorAll(".case-check"));
+  const update = () => {
+    const sel = checks().filter(c=>c.checked);
+    bar.style.display = sel.length ? "flex":"none";
+    document.getElementById("bulk-count").textContent = `${sel.length} selected`;
+  };
+  checks().forEach(c=>c.onchange=update);
+  document.getElementById("select-all").onchange = e => { checks().forEach(c=>c.checked=e.target.checked); update(); };
+  const doBulk = async status => {
+    const reviewer = document.getElementById("bulk-reviewer").value || "anonymous";
+    const sel = checks().filter(c=>c.checked).map(c=>[c.dataset.relation, parseInt(c.dataset.gi)]);
+    if(!sel.length) return;
+    await fetchJSON(`${API}/datasets/${currentDataset}/cases/bulk-disposition`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({cases:sel, status, reviewer}),
+    });
+    toast(`${sel.length} case(s) marked ${status.replace("_"," ")}`);
+    loadDataset();
+  };
+  document.getElementById("bulk-confirm").onclick = () => doBulk("confirmed_ring");
+  document.getElementById("bulk-dismiss").onclick = () => doBulk("dismissed");
+}
+
+async function loadWatchlist(){
+  const wl = await fetchJSON(`${API}/datasets/${currentDataset}/watchlist`);
+  document.getElementById("nav-watch-count").textContent = wl.length;
+  const el = document.getElementById("watchlist-content");
+  if(!wl.length){ el.innerHTML = `<div class="empty-state">No entries yet — confirm a ring to populate this.</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Entity type</th><th>Value</th><th>Source case</th><th>Added by</th></tr></thead><tbody>
+    ${wl.map(w=>`<tr><td>${w.entity_type}</td><td class="mono-cell">${w.entity_value}</td><td>${w.source_relation} #${w.source_group_index}</td><td>${w.reviewer}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+async function loadSegments(){
+  const el = document.getElementById("segments-content");
+  if(currentDataset!=="upi"){ el.innerHTML = `<div class="empty-state">Only computed for UPI (see card description).</div>`; return; }
+  try{
+    const segs = await fetchJSON(`${API}/datasets/upi/segments`);
+    el.innerHTML = `<table><thead><tr><th>City</th><th>N</th><th>Threshold</th><th>Precision</th><th>Recall</th></tr></thead><tbody>
+      ${segs.map(s=> s.note
+        ? `<tr><td>${s.segment}</td><td class="mono-cell">${s.n}</td><td colspan="3" style="color:var(--text3);">${s.note}</td></tr>`
+        : `<tr><td>${s.segment}</td><td class="mono-cell">${s.n}</td><td class="mono-cell">${fmt3(s.recommended_threshold)}</td><td class="mono-cell">${fmt3(s.precision)}</td><td class="mono-cell">${fmt3(s.recall)}</td></tr>`
+      ).join("")}
+    </tbody></table>`;
+  }catch(e){ el.innerHTML = `<div class="empty-state">Not computed yet.</div>`; }
+}
+
+async function loadSpikes(){
+  const el = document.getElementById("spikes-content");
+  if(currentDataset!=="upi" && currentDataset!=="elliptic"){ el.innerHTML = `<div class="empty-state">No temporal field for this dataset.</div>`; return; }
+  try{
+    const spikes = await fetchJSON(`${API}/datasets/${currentDataset}/spikes`);
+    const flagged = spikes.filter(s=>s.spike);
+    el.innerHTML = `<p style="font-size:12.5px;color:var(--text2);margin-bottom:10px;">${flagged.length} spike bucket(s) of ${spikes.length}.</p>` +
+      `<div style="max-height:340px;overflow-y:auto;"><table><thead><tr><th>Bucket</th><th>Flagged</th><th>Z-score</th><th></th></tr></thead><tbody>
+      ${spikes.map(s=>`<tr style="${s.spike?'background:rgba(255,92,114,0.06);':''}"><td class="mono-cell">${s.bucket}</td><td class="mono-cell">${s.flagged_count}</td><td class="mono-cell">${s.z_score.toFixed(2)}</td><td>${s.spike?'<span class="status-pill confirmed_ring">SPIKE</span>':''}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  }catch(e){ el.innerHTML = `<div class="empty-state">Not computed yet.</div>`; }
+}
+
+async function openCase(relation, groupIndex){
+  const c = await fetchJSON(`${API}/datasets/${currentDataset}/cases/${relation}/${groupIndex}`);
+  const evidence = Object.entries(c.evidence).filter(([k])=>k!=="relation")
+    .map(([k,v])=>`<div class="evidence-line">shared <b>${k}</b> = <b>${v}</b> across all ${c.size} members</div>`).join("")
+    || `<div class="evidence-line">Grouped via <b>${c.relation}</b> relation.</div>`;
+  const memberRows = c.members.map(m=>`<tr><td class="mono-cell">${m.id}</td><td class="mono-cell">${fmt3(m.score)}</td><td>${m.label ?? "-"}</td>${m.vpa?`<td>${m.vpa}</td><td>${m.city}</td>`:""}</tr>`).join("");
+
+  const drawer = document.getElementById("drawer");
+  const backdrop = document.getElementById("drawer-backdrop");
+  drawer.innerHTML = `
+    <div class="drawer-inner">
+      <div class="drawer-close" id="drawer-close">&times;</div>
+      <div class="pill-badge" style="margin-bottom:10px;">${currentDataset} / ${c.relation}</div>
+      <h2 style="font-family:var(--font-display);font-size:22px;">Group #${c.group_index}
+        <span class="status-pill ${c.status}" style="margin-left:6px;">${c.status.replace("_"," ")}</span>
+        ${c.on_watchlist? '<span class="watch-flag">⚠ ON WATCHLIST</span>':''}
+      </h2>
+      <div class="graph-box" style="margin-top:16px;height:300px;"><svg id="case-graph-svg"></svg></div>
+      <div style="margin-top:16px;">
+        <h3 style="font-size:12.5px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Why flagged</h3>
+        ${evidence}
+        <p style="font-size:13px;color:var(--text2);margin-top:10px;">Score <b style="color:var(--text)">${fmt3(c.score)}</b> · size <b style="color:var(--text)">${c.size}</b> · split <b style="color:var(--text)">${c.bucket}</b> · age <b style="color:var(--text)">${fmtAge(c.age_days)}</b>${c.true_label!=null?` · majority true label <b style="color:var(--text)">${c.true_label}</b>`:""}</p>
+        <div class="policy-box"><b>${c.policy_recommendation.action.replace("_"," ")}</b><br><span style="color:var(--text2);">${c.policy_recommendation.reason} (via ${c.policy_recommendation.triggered_by})</span></div>
+      </div>
+      <div style="margin-top:20px;">
+        <h3 style="font-size:12.5px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Disposition</h3>
+        <textarea id="note-area" placeholder="Analyst note..." style="width:100%;min-height:56px;">${c.note||""}</textarea>
+        <input id="reviewer-name" placeholder="Your name" value="${c.reviewer||""}" style="width:100%;margin-top:8px;">
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="danger-btn" id="btn-confirm">Confirm ring</button>
+          <button class="primary" id="btn-dismiss">Dismiss</button>
+          <button class="ghost" id="btn-reset">Reset</button>
+        </div>
+      </div>
+      <div style="margin-top:22px;">
+        <h3 style="font-size:12.5px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Members</h3>
+        <div style="max-height:260px;overflow-y:auto;"><table><thead><tr><th>ID</th><th>Score</th><th>Label</th>${c.members[0]?.vpa?"<th>VPA</th><th>City</th>":""}</tr></thead><tbody>${memberRows}</tbody></table></div>
+      </div>
+    </div>`;
+  drawer.classList.add("open"); backdrop.classList.add("open");
+  const hubId = `hub:${c.relation}:${c.group_index}`;
+  const graphNodes = [{id:hubId, kind:"hub", relation:c.relation, score:c.score, size:c.size, label_text: Object.entries(c.evidence).filter(([k])=>k!=="relation").map(([k,v])=>`${k}=${v}`).join(", ") || c.relation}];
+  const graphEdges = c.members.map(m=>{
+    graphNodes.push({id:`m:${m.id}`, kind:"member", raw_id:m.id, score:m.score, label:m.label, vpa:m.vpa, city:m.city});
+    return {source:`m:${m.id}`, target:hubId};
+  });
+  renderForceGraph(document.getElementById("case-graph-svg"), graphNodes, graphEdges);
+
+  const close = () => { drawer.classList.remove("open"); backdrop.classList.remove("open"); };
+  document.getElementById("drawer-close").onclick = close;
+  backdrop.onclick = close;
+
+  const disposition = async status => {
+    const reviewer = document.getElementById("reviewer-name").value || "anonymous";
+    const note = document.getElementById("note-area").value;
+    await fetchJSON(`${API}/datasets/${currentDataset}/cases/${relation}/${groupIndex}/disposition`, {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status, reviewer, note}),
+    });
+    toast(`Case marked ${status.replace("_"," ")}`);
+    close();
+    loadDataset();
+  };
+  document.getElementById("btn-confirm").onclick = () => disposition("confirmed_ring");
+  document.getElementById("btn-dismiss").onclick = () => disposition("dismissed");
+  document.getElementById("btn-reset").onclick = () => disposition("pending");
+}
+
+document.getElementById("filter-status").onchange = loadCases;
+document.getElementById("filter-relation").onchange = loadCases;
+loadDataset();
+</script>
+</body>
+</html>

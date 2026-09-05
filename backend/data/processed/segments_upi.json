@@ -1,0 +1,78 @@
+[
+  {
+    "segment": "Ahmedabad",
+    "n": 312,
+    "n_pos": 0,
+    "note": "not enough class variety to threshold"
+  },
+  {
+    "segment": "Bengaluru",
+    "n": 352,
+    "n_pos": 25,
+    "recommended_threshold": 0.40703517587939697,
+    "precision": 0.9259259259259259,
+    "recall": 1.0
+  },
+  {
+    "segment": "Chennai",
+    "n": 324,
+    "n_pos": 19,
+    "recommended_threshold": 0.3969849246231156,
+    "precision": 0.76,
+    "recall": 1.0
+  },
+  {
+    "segment": "Delhi",
+    "n": 276,
+    "n_pos": 1,
+    "recommended_threshold": 1.0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  {
+    "segment": "Hyderabad",
+    "n": 285,
+    "n_pos": 0,
+    "note": "not enough class variety to threshold"
+  },
+  {
+    "segment": "Jaipur",
+    "n": 349,
+    "n_pos": 18,
+    "recommended_threshold": 0.4020100502512563,
+    "precision": 0.782608695652174,
+    "recall": 1.0
+  },
+  {
+    "segment": "Kolkata",
+    "n": 324,
+    "n_pos": 6,
+    "recommended_threshold": 0.3969849246231156,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  {
+    "segment": "Lucknow",
+    "n": 327,
+    "n_pos": 11,
+    "recommended_threshold": 0.45226130653266333,
+    "precision": 0.7857142857142857,
+    "recall": 1.0
+  },
+  {
+    "segment": "Mumbai",
+    "n": 331,
+    "n_pos": 38,
+    "recommended_threshold": 0.3417085427135678,
+    "precision": 0.7450980392156863,
+    "recall": 1.0
+  },
+  {
+    "segment": "Pune",
+    "n": 318,
+    "n_pos": 4,
+    "recommended_threshold": 0.3417085427135678,
+    "precision": 0.16666666666666666,
+    "recall": 1.0
+  }
+]

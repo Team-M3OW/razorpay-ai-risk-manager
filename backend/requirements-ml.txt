@@ -1,0 +1,14 @@
+# ML pipeline (abuse_ring/) - training, export, and analytics scripts.
+# NOT needed to serve the API (app/main.py never imports any of these) -
+# that's requirements.txt, kept deliberately minimal so a platform deploy
+# (e.g. Azure App Service Free tier's 1GB disk quota) doesn't try to
+# install torch/dgl alongside the actual serving dependencies.
+torch==2.2.1
+dgl==2.2.1
+networkx
+python-igraph
+leidenalg
+pandas
+numpy
+scikit-learn
+kagglehub

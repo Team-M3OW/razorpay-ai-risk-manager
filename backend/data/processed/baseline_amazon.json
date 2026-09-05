@@ -1,0 +1,18 @@
+{
+  "dataset": "amazon",
+  "elapsed_sec": 15.609397888183594,
+  "epochs_trained": 33,
+  "node_test_metrics": {
+    "auc": 0.7237547488391726,
+    "pr_auc": 0.28270145039432587,
+    "recall": 0.0,
+    "precision": 0.0,
+    "flag_rate": 0.000578368999421631
+  },
+  "published_reference": {
+    "paper_auc": 0.897,
+    "paper_recall": 0.885,
+    "dgl_auc": 0.892,
+    "dgl_recall": 0.854
+  }
+}
