@@ -1,40 +1,26 @@
-"""Synthetic UPI (Unified Payments Interface) transaction network - the
-Razorpay/India-shaped DEMO dataset for the platform.
+"""Synthetic UPI (Unified Payments Interface) transaction network.
 
-IMPORTANT - honesty framing: this is clearly-labeled SYNTHETIC data. No real,
-publicly-available, India-specific financial fraud graph dataset with real
-labels exists (checked: RBI/NPCI don't publish real UPI transaction data;
-every "UPI fraud" dataset on Kaggle is itself synthetic and unlabeled-graph).
-This dataset exists to demo the platform in a Razorpay-relevant shape, not to
-make a rigor claim - the rigor/published-benchmark claim lives entirely in
-elliptic_data.py (real Bitcoin transactions, real law-enforcement-derived
-labels, real published baselines to compare against). Never conflate the two
-in reporting: this dataset's numbers are "does our architecture behave
-sensibly on a realistic-shaped problem," not "here is a benchmark result."
+This is synthetic data: no public India-specific financial fraud graph
+dataset with real labels was found. It demonstrates the model on a
+Razorpay-relevant data shape; the published-benchmark comparison lives in
+elliptic_data.py.
 
-Simulated pattern: a MONEY-MULE RING.
-  1. A small set of "collector" VPAs are registered together in a tight
-     window, sharing 1-3 device IDs and 1-2 bank accounts among them (a
-     controlled ring, not one single device for the whole ring - that would
-     be trivially easy to catch and isn't how real rings operate).
-  2. Many ordinary, otherwise-legitimate accounts each send one small
-     payment to a randomly chosen collector within a short burst window
-     (the fan-in leg). These senders are NOT labeled fraud - being paid by
-     someone doesn't make an account part of the ring.
-  3. Collectors then rapidly forward pooled funds to 1-2 "cash-out" VPAs
-     within hours of receiving (the fan-out leg) - the classic layering
-     signature. Only collectors + cash-out VPAs are labeled fraud=1.
+Simulated pattern: a money-mule ring.
+  1. A small set of collector VPAs are registered together in a tight
+     window, sharing 1-3 device IDs and 1-2 bank accounts.
+  2. Ordinary accounts each send one small payment to a randomly chosen
+     collector within a short window (fan-in). These senders are not
+     labeled fraud.
+  3. Collectors forward pooled funds to 1-2 cash-out VPAs within hours
+     (fan-out). Only collectors and cash-out VPAs are labeled fraud.
 
-Hard negatives: separate, legitimate shared-device/shared-bank clusters
-(families/small shops sharing one phone for UPI - common in India) that
-transact normally, with no fan-in/fan-out burst pattern - these exist
-specifically to test that the model doesn't flag "shares a device" alone as
-suspicious.
+Hard negatives: separate legitimate shared-device or shared-bank clusters
+(for example, a household sharing one phone for UPI) with no fan-in or
+fan-out pattern, to test that shared identifiers alone do not trigger a
+flag.
 
-Split: by signup week (temporal), not random - rings registered in the last
-weeks fall entirely into the test split, so test-set rings are genuinely
-unseen during training, matching the same "generalize to the future"
-principle used for Elliptic.
+Split: by signup week, not random, so test-split rings are unseen during
+training.
 """
 
 from __future__ import annotations

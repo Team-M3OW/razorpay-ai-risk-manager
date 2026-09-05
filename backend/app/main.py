@@ -1,17 +1,8 @@
-"""Abuse Ring Sentinel API - the analyst workspace on top of the trained
-models: case queue, evidence, dispositions, a watchlist that auto-flags
-recurrence of confirmed-bad identifiers, an editable auto-action policy,
-real webhook alerting, per-segment thresholds, ring-formation spike
-detection, and CSV export.
+"""RiskOps API.
 
-Everything here is real and tested end to end (see the session's own
-verification): the webhook alerter was proven against a local mock
-receiver, the watchlist/policy logic runs against real case data, the
-segment/spike analytics are precomputed from real model output. What genuinely
-isn't here - because it needs infrastructure this project doesn't have, not
-because it's unbuilt in principle - is a live merchant taxonomy (no dataset
-has one) and a real external Slack workspace to point the alerter at (drop
-a real webhook URL into ABUSE_RING_ALERT_WEBHOOK and it works unchanged).
+Serves the case queue, evidence, dispositions, watchlist, policy engine,
+webhook alerting, segment and spike analytics, CSV export, the CSV
+upload/trace pipeline, and the Razorpay webhook integration.
 """
 
 from __future__ import annotations
@@ -61,7 +52,7 @@ DATASETS = ["yelp", "amazon", "elliptic", "upi"]
 DATASET_KIND = {"yelp": "real", "amazon": "real", "elliptic": "real", "upi": "synthetic"}
 WATCHABLE_ENTITY_FIELDS = ("device_id", "bank_account_id", "ip_address", "phone_hash")
 
-app = FastAPI(title="Abuse Ring Sentinel API")
+app = FastAPI(title="RiskOps API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -80,8 +71,7 @@ def _try_load_json(name: str):
 
 
 def _case_entity_values(case: dict) -> list[tuple[str, str]]:
-    """The (entity_type, value) pairs a case's evidence exposes - what the
-    watchlist keys on."""
+    """Return the (entity_type, value) pairs a case's evidence exposes."""
     return [(k, v) for k, v in case.get("evidence", {}).items() if k in WATCHABLE_ENTITY_FIELDS]
 
 
@@ -176,10 +166,8 @@ class DispositionIn(BaseModel):
 
 
 def _apply_disposition_side_effects(conn, ds: str, case: dict, status: str, reviewer: str):
-    """Confirming a ring adds its evidence entities to the watchlist and
-    fires a real webhook alert - the two product features that actually
-    depend on a disposition happening, wired to the real event, not
-    simulated separately."""
+    """On confirmation, add the case's evidence entities to the watchlist
+    and fire a webhook alert."""
     if status != "confirmed_ring":
         return
     for entity_type, value in _case_entity_values(case):
@@ -196,11 +184,8 @@ def set_case_disposition(ds: str, relation: str, group_index: int, body: Disposi
     if case is None:
         raise HTTPException(404, "case not found")
     conn = connect()
-    # A case only has a ring_case_status row once someone has opened its
-    # detail view (get_case upserts it there). Acting on a case straight from
-    # the list/bulk-select flow, which never called that, would otherwise
-    # UPDATE zero rows and silently no-op - upsert here too so disposition
-    # always has a row to act on regardless of how the case was reached.
+    # Ensure a ring_case_status row exists even if the case detail view was
+    # never opened, so the following UPDATE has a row to act on.
     upsert_case(conn, ds, relation, group_index, [m["id"] for m in case["members"]], case["score"])
     set_disposition(conn, ds, relation, group_index, body.status, body.reviewer, body.note)
     _apply_disposition_side_effects(conn, ds, case, body.status, body.reviewer)
@@ -235,8 +220,7 @@ def bulk_disposition(ds: str, body: BulkDispositionIn):
 
 @app.get("/api/datasets/{ds}/dispositions")
 def get_dispositions(ds: str):
-    """Real analyst-derived labels collected so far - empty until this runs
-    against actual reviewed cases. See case_store.py."""
+    """Return analyst-derived labels collected so far."""
     conn = connect()
     return export_labels(conn, ds)
 
@@ -249,9 +233,8 @@ def get_watchlist(ds: str):
 
 @app.get("/api/datasets/upi/segments")
 def get_segments():
-    """Per-city cost-optimal threshold breakdown - see segment_analysis.py
-    for why this is UPI-only right now (the one dataset with a real
-    per-user segment field)."""
+    """Per-city cost-optimal threshold breakdown. UPI-only, since it is
+    the only dataset with a per-user segment field."""
     return _load_json("segments_upi.json")
 
 
@@ -264,10 +247,9 @@ def get_spikes(ds: str):
 
 @app.get("/api/datasets/{ds}/lookup")
 def lookup_identifier(ds: str, q: str):
-    """Real-time screening: does this identifier (VPA / device / bank
-    account / member id) appear in any group the model actually flagged?
-    A genuine linear scan over the exported case index - the same data the
-    case queue reads from, not a canned response."""
+    """Look up whether an identifier (VPA, device, bank account, or
+    member id) appears in any flagged group, by scanning the exported
+    case index."""
     if ds not in DATASETS:
         raise HTTPException(404, "unknown dataset")
     q_norm = q.strip()
@@ -323,8 +305,8 @@ def lookup_identifier(ds: str, q: str):
 
 @app.get("/api/datasets/{ds}/lookup/examples")
 def lookup_examples(ds: str):
-    """A few real values pulled from real flagged groups, so the live
-    demo has something honest to suggest instead of an empty box."""
+    """Return a few example values from flagged groups for the lookup UI
+    to suggest."""
     if ds not in DATASETS:
         raise HTTPException(404, "unknown dataset")
     cases = sorted(_load_json(f"cases_{ds}.json"), key=lambda c: -c["score"])
@@ -343,9 +325,8 @@ def lookup_examples(ds: str):
 
 @app.get("/api/datasets/{ds}/graph")
 def get_graph(ds: str, limit: int = 25):
-    """Real bipartite member<->group topology for the top-scoring rings -
-    the same structure CA-HGAT's own message passing uses (see
-    export_cases.py), not a fabricated pairwise mesh."""
+    """Build the bipartite member/group topology for the top-scoring
+    rings, matching the structure CA-HGAT's message passing uses."""
     if ds not in DATASETS:
         raise HTTPException(404, "unknown dataset")
     cases = sorted(_load_json(f"cases_{ds}.json"), key=lambda c: -c["score"])[:limit]
@@ -372,19 +353,15 @@ def get_graph(ds: str, limit: int = 25):
 
 @app.get("/api/pipeline/sample.csv")
 def pipeline_sample_csv():
-    """A small synthetic log file shaped like UPI transaction logs, so the
-    upload demo has something to run instantly instead of requiring the
-    visitor to already have a CSV on hand."""
+    """Return a small synthetic log file shaped like UPI transaction logs."""
     return PlainTextResponse(sample_csv(), media_type="text/csv")
 
 
 @app.post("/api/pipeline/trace")
 async def pipeline_trace(file: UploadFile = File(...)):
-    """Uploads a CSV of logs, builds the real shared-identifier graph over
-    its rows (pure Python union-find, no ML weights involved), and returns
-    detected rings scored by a disclosed structural heuristic - see
-    csv_pipeline.py's module docstring for exactly why this isn't the
-    trained CA-HGAT model and what it honestly is instead."""
+    """Build a shared-identifier graph over an uploaded CSV's rows using
+    union-find, and return detected rings scored by a structural
+    heuristic. See csv_pipeline.py for the scoring method."""
     raw = await file.read()
     try:
         result = run_pipeline(raw)
@@ -394,10 +371,8 @@ async def pipeline_trace(file: UploadFile = File(...)):
 
 
 def _process_razorpay_event(raw_body: bytes, signature: str | None, is_simulated: bool) -> dict:
-    """The single processing path for a Razorpay-shaped webhook payload,
-    used identically by the real inbound webhook route and by the
-    self-signed simulated-traffic replay - no branch distinguishes "real"
-    from "simulated" past signature verification, which both go through."""
+    """Verify, parse, and store one Razorpay-shaped webhook payload. Used
+    by both the inbound webhook route and the simulated-traffic replay."""
     if not verify_signature(raw_body, signature):
         raise HTTPException(400, "invalid webhook signature")
     try:
@@ -417,11 +392,9 @@ def _process_razorpay_event(raw_body: bytes, signature: str | None, is_simulated
 
 @app.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request):
-    """Real inbound Razorpay webhook endpoint. Verifies the X-Razorpay-
-    Signature header against RAZORPAY_WEBHOOK_SECRET using Razorpay's
-    documented HMAC-SHA256-of-the-raw-body scheme - point a real Razorpay
-    test-mode webhook (Settings -> Webhooks in the dashboard) at this URL
-    and it works unchanged; no code path here is simulation-only."""
+    """Inbound Razorpay webhook endpoint. Verifies the X-Razorpay-Signature
+    header against RAZORPAY_WEBHOOK_SECRET using HMAC-SHA256 over the raw
+    request body, per Razorpay's webhook signing scheme."""
     raw_body = await request.body()
     signature = request.headers.get("x-razorpay-signature")
     ids = _process_razorpay_event(raw_body, signature, is_simulated=False)
@@ -430,13 +403,11 @@ async def razorpay_webhook(request: Request):
 
 @app.post("/webhooks/razorpay/replay")
 def razorpay_replay(background_tasks: BackgroundTasks, n_normal: int = 20, ring_size: int = 6):
-    """Generates a batch of Razorpay-shaped synthetic traffic (a background
-    of distinct payments plus one planted coordinated-identifier ring),
-    signs each event with the same webhook secret real traffic would be
-    verified against, and feeds them through the exact same processing
-    function as a real webhook - paced with a short delay per event so a
-    polling frontend can show them arriving over a few seconds. Returns
-    immediately; poll /webhooks/razorpay/recent to watch it happen."""
+    """Generate a batch of Razorpay-shaped synthetic traffic (background
+    payments plus one planted coordinated-identifier ring), sign each
+    event, and process them through the same path as a real webhook, with
+    a short delay between events. Returns immediately; poll
+    /webhooks/razorpay/recent for results."""
     events = generate_traffic_batch(n_normal=n_normal, ring_size=ring_size)
 
     def _run():
@@ -448,7 +419,7 @@ def razorpay_replay(background_tasks: BackgroundTasks, n_normal: int = 20, ring_
 
 @app.post("/webhooks/razorpay/reset")
 def razorpay_reset():
-    """Clears the demo event buffer for a clean re-run before recording."""
+    """Clear the stored Razorpay event buffer."""
     clear_razorpay_events(connect())
     return {"ok": True}
 

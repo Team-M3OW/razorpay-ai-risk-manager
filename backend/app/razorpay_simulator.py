@@ -1,15 +1,11 @@
-"""Razorpay webhook ingestion demo: real payment-webhook shape, a real HMAC
-signature scheme, and shared-identifier ring detection over the incoming
-event buffer - the same union-find mechanism `csv_pipeline.py` uses for an
-uploaded CSV, applied here to live "transactions" instead.
+"""Razorpay webhook ingestion.
 
-Real vs. simulated traffic are meant to be indistinguishable to the
-pipeline: a simulated event is signed with the same webhook secret used to
-verify a real inbound Razorpay webhook, and both land through the exact
-same processing function in main.py. If a real Razorpay test-mode webhook
-is ever pointed at this app, it enters the identical code path - there is
-no separate "fake mode" branch. Nothing here calls any Razorpay API
-(inbound webhooks only) - no payment is created, moved, or held for real.
+Verifies Razorpay's HMAC-SHA256 webhook signature scheme and applies
+shared-identifier ring detection (union-find, matching csv_pipeline.py's
+approach) to incoming payment events. Also generates signed synthetic
+traffic through the same processing path, for testing without a live
+Razorpay account. This module only receives webhooks; it never calls the
+Razorpay API.
 """
 
 from __future__ import annotations
@@ -25,11 +21,8 @@ from collections import defaultdict
 
 from .csv_pipeline import DSU
 
-# In real use this is the secret configured in the Razorpay dashboard's
-# Webhooks page, mirrored here via an env var. The fallback lets the
-# simulated-traffic demo work with zero configuration - see module
-# docstring: this is the value used to self-sign synthetic events too, so
-# nothing about verification is bypassed for the no-account demo path.
+# Mirrors the secret configured in the Razorpay dashboard's Webhooks page.
+# The fallback allows simulated traffic to work without configuration.
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "demo_secret_for_local_testing")
 
 CITIES = ["Mumbai", "Pune", "Jaipur", "Kolkata", "Ahmedabad", "Hyderabad"]
@@ -38,8 +31,8 @@ ID_FIELDS = ("vpa", "email", "contact")
 
 
 def sign_payload(raw_body: bytes, secret: str = RAZORPAY_WEBHOOK_SECRET) -> str:
-    """Razorpay's documented webhook signature scheme: HMAC-SHA256 of the
-    raw request body, hex-encoded."""
+    """Compute Razorpay's webhook signature: HMAC-SHA256 of the raw
+    request body, hex-encoded."""
     return hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
 
 
@@ -51,10 +44,8 @@ def verify_signature(raw_body: bytes, signature: str | None, secret: str = RAZOR
 
 
 def sample_event(event_type: str, *, vpa: str, contact: str, email: str, amount: int, notes: dict | None = None) -> dict:
-    """One Razorpay-shaped webhook payload - real field names/nesting for
-    payment.captured / payment.failed, matching Razorpay's documented
-    webhook schema. The payment id and timestamps are synthetic; the shape
-    is real."""
+    """Build one webhook payload matching Razorpay's payment.captured and
+    payment.failed schema. The payment id and timestamps are synthetic."""
     payment_id = f"pay_{uuid.uuid4().hex[:14]}"
     now = int(time.time())
     return {
@@ -84,11 +75,9 @@ def sample_event(event_type: str, *, vpa: str, contact: str, email: str, amount:
 
 
 def generate_traffic_batch(n_normal: int = 20, ring_size: int = 6, seed: int | None = None) -> list[dict]:
-    """A background of distinct-identifier normal payments plus one planted
-    cluster sharing a contact number (and bank) across ring_size events -
-    fully synthetic, disclosed as such. Same honesty register as
-    upi_synthetic.py and csv_pipeline.sample_csv(): this proves the
-    detection mechanism, it is not a claim about real traffic."""
+    """Generate synthetic traffic: n_normal payments with distinct
+    identifiers, plus one planted cluster of ring_size payments sharing a
+    contact number and bank."""
     rng = random.Random(seed)
     events = []
     for _ in range(n_normal):
@@ -121,9 +110,9 @@ def generate_traffic_batch(n_normal: int = 20, ring_size: int = 6, seed: int | N
 
 
 def extract_identifiers(event: dict) -> dict:
-    """Pulls the fields ring-detection cares about out of a Razorpay
-    payment-webhook payload. Returns {} for anything not shaped like one -
-    the caller decides whether that's an error."""
+    """Extract the fields used for ring detection from a Razorpay
+    payment-webhook payload. Returns {} if the payload does not match the
+    expected shape."""
     try:
         entity = event["payload"]["payment"]["entity"]
     except (KeyError, TypeError):
@@ -139,11 +128,9 @@ def extract_identifiers(event: dict) -> dict:
 
 
 def detect_rings(events: list[dict]) -> dict:
-    """Real union-find over shared vpa/email/contact across the event
-    buffer - identical mechanism to csv_pipeline.py's DSU-based matching,
-    applied to live events instead of CSV rows. `events` must be a list of
-    dicts with vpa/email/contact keys (case_store.list_razorpay_events'
-    shape), ordered oldest-first so indices stay stable across polls."""
+    """Run union-find over shared vpa, email, and contact fields across
+    the event buffer. Expects a list of dicts with those keys, ordered
+    oldest-first (see case_store.list_razorpay_events)."""
     n = len(events)
     dsu = DSU(n)
     hubs: dict[tuple[str, str], list[int]] = defaultdict(list)
@@ -201,12 +188,10 @@ def detect_rings(events: list[dict]) -> dict:
 
 
 def sign_and_process_all(events: list[dict], process_fn, delay_seconds: float = 0.35) -> None:
-    """Signs each event with the real webhook secret and pushes it through
-    `process_fn(raw_body: bytes, signature: str, is_simulated: bool)` -
-    the exact same function the real `/webhooks/razorpay` route calls after
-    verifying a real Razorpay signature. Paced with a delay so a polling
-    frontend can show traffic arriving over a few seconds rather than all
-    at once."""
+    """Sign each event and pass it to process_fn(raw_body, signature,
+    is_simulated), the same function the /webhooks/razorpay route calls.
+    Sleeps delay_seconds between events so a polling frontend can show
+    traffic arriving over time."""
     for ev in events:
         body = json.dumps(ev).encode()
         sig = sign_payload(body)

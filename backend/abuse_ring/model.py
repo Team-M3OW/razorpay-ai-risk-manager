@@ -1,26 +1,17 @@
 """CA-HGAT: Camouflage-Aware Hypergraph Attention Network.
 
-A heterogeneous, bipartite, multi-relational Graph Attention Network over a
-member<->group incidence graph (see ring_extraction.py for how groups/
-hyperedges are built). Each round alternates:
+A bipartite, multi-relational graph attention network over a
+member-to-group incidence graph (see ring_extraction.py for how groups
+are built). Each round alternates:
 
-  member -> group : GAT attention pools each group's members into a group
-                     embedding. This is the camouflage-resistance mechanism -
-                     a decoy member that doesn't help predict the group's
-                     label gets down-weighted by the learned attention score,
-                     not averaged in uniformly.
-  group -> member : GAT attention broadcasts group context back to members.
+  member -> group: attention pools each group's members into a group
+                    embedding, down-weighting members that do not help
+                    predict the group label.
+  group -> member: attention broadcasts group context back to members.
 
-Two heads read off the final representations:
-  - node_head:  per-member fraud probability (comparable to the published
-                CARE-GNN node-classification numbers on this benchmark).
-  - group_head: per-group ring probability (the platform's actual
-                contribution - no published model on this benchmark scores
-                the group/ring itself).
-
-Both heads are trained jointly through one shared trunk, so gradients from
-the ring objective reshape the member embeddings too - not a frozen node
-encoder with a classifier stacked on top afterwards.
+Two output heads share the same trunk and are trained jointly:
+  - node_head: per-member fraud probability.
+  - group_head: per-group ring probability.
 """
 
 from __future__ import annotations

@@ -1,25 +1,16 @@
-"""Auto-action policy: turns a case's score (and watchlist membership) into
-a recommended action, as configurable logic sitting on top of the model -
-not baked into it. A risk team edits POLICY_RULES (or swaps in their own),
-not the model, when they want to change what triggers automatic action.
+"""Policy engine: maps a case's score, size, and watchlist status to a
+recommended action.
 
-Two independent triggers, evaluated in order (first match wins):
-  1. Watchlist match - any member's evidence entity is already confirmed bad.
-     This fires regardless of the model's own score, which is the whole
-     point: a freshly-created account controlled by a known-bad device may
-     not yet have enough transaction history for the graph model to flag it
-     on its own, but the shared identifier already tells you what you need.
-  2. Score/size thresholds - the model's own signal, thresholded into three
-     bands (auto-confirm / auto-review / auto-clear) instead of one cutoff,
-     since a very high score AND a large ring is a different decision than
-     a middling score on a tiny group.
+Evaluated in order:
+  1. Watchlist match on any member's evidence entity.
+  2. Score and size thresholds, split into three bands (auto-confirm,
+     needs-review, auto-clear).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Named, editable thresholds - not hidden inside the evaluation logic.
 AUTO_CONFIRM_SCORE = 0.90
 AUTO_CONFIRM_MIN_SIZE = 4
 AUTO_CLEAR_SCORE = 0.05

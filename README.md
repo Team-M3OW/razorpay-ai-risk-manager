@@ -1,68 +1,64 @@
-# Ringfence — AI Risk Manager
+# RiskOps
 
-Find the ring, fence it off. A camouflage-resistant graph model for
-detecting coordinated fraud rings (not just individual bad actors), wired
-into a real analyst product and a real payment-webhook integration. Built
-for Razorpay's AI Risk Manager hackathon track. Defense-only.
+Graph-based detection of coordinated fraud rings, built for a Razorpay
+hackathon submission.
 
-## What's here
+## Overview
 
-**Detection core** (`backend/abuse_ring/`) — CA-HGAT (camouflage-aware
-hypergraph attention network), trained and honestly evaluated on four
-datasets:
-- **Yelp-Fraud / Amazon-Fraud** (Dou et al., CIKM 2020's published CARE-GNN
-  benchmark) — beats the published baseline; on Amazon, a plain
-  non-ring model collapses to zero recall without the group mechanism,
-  proving the ring signal is load-bearing, not decorative.
-- **Elliptic** (real Bitcoin transactions, real illicit-wallet labels,
-  Weber et al. 2019) — loses to a plain Random Forest on F1, reported as a
-  loss rather than hidden.
-- **UPI** (synthetic, deliberately camouflaged mule rings — partial
-  identifier sharing, injected bystanders, no free lunch for the model).
+Most fraud detectors score one account at a time. RiskOps instead looks
+for groups of accounts, reviews, or transactions that share an identifier
+(device, IP, bank account, phone number, or a review-level relation such
+as same product and rating within a short time window) and scores the
+group. The core model is CA-HGAT, a camouflage-aware hypergraph attention
+network trained and evaluated on four datasets:
 
-Also here: ring extraction (Leiden community detection), cost-curve
-threshold selection, relation importance, and a documented, discarded
-hypothesis (gating relations by Louvain modularity) alongside the
-causally-correct replacement (post-hoc relation importance) — see
-`ring_extraction.py` / `train_eval.py`.
+- Yelp-Fraud and Amazon-Fraud (the CARE-GNN benchmark from Dou et al.,
+  CIKM 2020). Results beat the published baseline on both. On Amazon, a
+  version of the model without the group mechanism drops to zero recall,
+  which is the evidence that group-level signal is doing real work.
+- Elliptic (real Bitcoin transaction graph, real illicit-wallet labels
+  from Weber et al., 2019). This model loses to a plain Random Forest on
+  F1; that result is reported as-is.
+- A synthetic UPI dataset with deliberately partial identifier sharing
+  and injected bystander accounts, built to avoid trivially easy
+  separability.
 
-**Analyst product** (`backend/app/`) — a FastAPI + vanilla-JS console, no
-build step:
-- **Live Risk Check** — screen a real VPA/device/bank-account against the
-  actual exported ring index; real match or real "clean," not a canned
-  response.
-- **Upload & Trace** — drop a CSV of logs, watch a real union-find
-  algorithm split it into connected rings live, scored by a disclosed
-  structural heuristic (explicitly not the trained model — see
-  `csv_pipeline.py`'s docstring for why).
-- **Live Transaction Feed** (inside Upload & Trace) — a real webhook
-  receiver speaking Razorpay's actual `payment.captured`/`payment.failed`
-  payload shape with real HMAC-SHA256 signature verification. A real
-  Razorpay test-mode webhook can point here unchanged; a "Replay simulated
-  traffic" button pushes self-signed synthetic events through the
-  identical code path for a zero-setup demo. See `razorpay_simulator.py`.
-- **Network Explorer** — a real interactive D3 force-directed graph of the
-  model's own bipartite member↔group structure, not a decorative
-  animation.
-- **Case Queue / Watchlist / Policy engine** — filterable case browser,
-  bulk actions, CSV export; confirming a ring auto-adds its shared
-  identifiers to a watchlist that flags recurrence regardless of model
-  score; an auto-confirm/auto-clear/needs-review policy gate; a real
-  webhook alert fires on confirmation (point `ABUSE_RING_ALERT_WEBHOOK` at
-  anything and it works unchanged).
-- **Model Performance** — the operating threshold is auto-selected by
-  sweeping every threshold against real held-out predictions and picking
-  the cost-minimizing one, not a slider a human drags.
+## What is in the repository
 
-`backend/data/processed/` holds the precomputed model outputs (metrics,
-ranked cases, segment/spike analysis, the sqlite case store) the API
-serves — already checked in, so the lightweight tier needs no GPU/training
-step to run.
+`backend/abuse_ring/` contains the model, training and evaluation code,
+ring extraction (Leiden community detection), cost-curve threshold
+selection, and relation-importance analysis.
 
-## Running it
+`backend/app/` contains a FastAPI backend and a plain HTML/CSS/JS frontend
+(no build step) that serves:
 
-**Full ML pipeline** (needs `torch`, `dgl`, `networkx`, `leidenalg`, etc. —
-see `backend/requirements-ml.txt`):
+- A case queue with filtering, bulk actions, and CSV export.
+- A watchlist: confirming a ring adds its shared identifiers, and any
+  future case touching one of them is flagged regardless of model score.
+- A policy engine that auto-confirms high-confidence large groups,
+  auto-clears near-zero scores, and routes everything else to review.
+- Webhook alerting on confirmation, configurable via
+  `ABUSE_RING_ALERT_WEBHOOK`.
+- A threshold selection panel that sweeps every threshold against held-out
+  predictions and reports the cost-minimizing point, rather than a
+  manually chosen value.
+- An identifier lookup tool that queries the exported ring index directly.
+- A CSV upload tool that builds a shared-identifier graph over arbitrary
+  log files using union-find, independent of the trained model.
+- A Razorpay webhook receiver at `/webhooks/razorpay` that verifies the
+  HMAC-SHA256 signature Razorpay uses for its payment webhooks and applies
+  the same identifier-matching logic to incoming payment events. A
+  companion endpoint generates signed synthetic traffic through the same
+  code path for testing without a live Razorpay account.
+
+`backend/data/processed/` contains precomputed model outputs and the
+sqlite case store, checked into the repository so the API runs without a
+training step.
+
+## Running locally
+
+Full pipeline, including training (requires torch, dgl, and the packages
+in `backend/requirements-ml.txt`):
 
 ```bash
 cd backend
@@ -72,11 +68,9 @@ python -m abuse_ring.export_cases --dataset all
 python -m abuse_ring.export_analytics
 ```
 
-**Just the API + UI** (lightweight — only `fastapi`, `uvicorn`, `gunicorn`,
-`pydantic`, `httpx`, `python-multipart`; see `backend/requirements.txt`).
-This is also what a platform deploy (e.g. Azure App Service) should
-install — `app/main.py` never imports torch/dgl, which is what makes
-deploying onto a small disk quota (like the Free F1 tier's 1GB) work:
+API and frontend only (requires only `backend/requirements.txt`; the
+model does not need to be retrained since its outputs are already in
+`data/processed/`):
 
 ```bash
 cd backend
@@ -84,33 +78,29 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-### Wiring up a real Razorpay webhook (optional)
+### Configuring a Razorpay webhook
 
-The Live Transaction Feed works with zero configuration via its
-"Replay simulated traffic" button. To also accept real Razorpay test-mode
-events:
-
-1. Set `RAZORPAY_WEBHOOK_SECRET` to any string, on whatever host is
+1. Set the `RAZORPAY_WEBHOOK_SECRET` environment variable on the host
    running the app.
-2. Razorpay Dashboard (Test Mode) → Account & Settings → Webhooks →
-   + Add New Webhook → URL = `<your host>/webhooks/razorpay`, same secret,
-   events `payment.captured` + `payment.failed`.
-3. Trigger a real test-mode payment (a Payment Link paid with UPI VPA
-   `success@razorpay`, or test card `4111 1111 1111 1111`) — it lands in
-   the feed tagged `[REAL]`.
+2. In the Razorpay dashboard (test mode), go to Account & Settings,
+   Webhooks, Add New Webhook. Set the URL to `<host>/webhooks/razorpay`,
+   use the same secret, and select the `payment.captured` and
+   `payment.failed` events.
+3. A test-mode payment (for example, a Payment Link paid with the test
+   UPI ID `success@razorpay`) will trigger a signed webhook that appears
+   in the app's live transaction feed.
 
-## Honest results, briefly
+## Results summary
 
-- Real, checkable results on published benchmarks: beats CARE-GNN on both
-  Yelp-Fraud and Amazon-Fraud, with the ring mechanism proven essential on
-  Amazon.
-- Real financial data (Elliptic): loses to Random Forest on F1, reported
-  honestly rather than hidden.
-- Synthetic UPI mule-ring demo: camouflaged rings, ring mechanism lifts F1
-  from 0.727 to 0.899 after adding IP/phone relations.
-- The CSV-upload and Razorpay-feed demos use a disclosed structural
-  heuristic (cluster size + number of distinct identifier types shared),
-  not the trained CA-HGAT model — running that at request time on
-  arbitrary uploads/webhooks would need the full torch/dgl stack loaded
-  into the serving process, which the lightweight deploy deliberately
-  doesn't carry.
+| Dataset | Metric | Result |
+|---|---|---|
+| Yelp-Fraud | AUC / Recall | Beats published CARE-GNN baseline |
+| Amazon-Fraud | Recall without group mechanism | Drops to 0 |
+| Elliptic | F1 vs. Random Forest | Loses |
+| UPI (synthetic) | F1 after adding IP/phone relations | 0.727 to 0.899 |
+
+The CSV upload tool and the Razorpay webhook feed use a disclosed
+structural heuristic (cluster size and number of distinct identifier
+types shared), not the trained model. Loading the full model stack for
+arbitrary request-time input would require torch and dgl in the serving
+process, which the deployed API does not include.

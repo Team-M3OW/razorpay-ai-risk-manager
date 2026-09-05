@@ -1,23 +1,10 @@
-"""Persistence layer for the case-queue product: analyst dispositions (the
-real ring-level labels this project has been honest about not having yet)
-and a watchlist of confirmed-bad shared identifiers, both backing the
-FastAPI app in app/main.py.
+"""Persistence layer for the case queue: analyst dispositions and a
+watchlist of confirmed-bad shared identifiers, backing the FastAPI app in
+app/main.py.
 
-The disposition table addresses a limitation stated throughout this
-project: every ring-level label so far is a majority-vote proxy over real
-node labels, because no real "this cluster was confirmed as a ring" label
-exists anywhere. That label can only come from an analyst reviewing an
-actual flagged case. This table is where those accumulate as a byproduct of
-normal review, not a retrofit.
-
-The watchlist table is the mechanism behind the "if a confirmed-bad
-identifier resurfaces, flag it immediately" product feature: when a case is
-confirmed, its shared entity value (e.g. a specific device_id or
-bank_account_id) goes on the watchlist, and any future case sharing that
-same value gets flagged regardless of what the model itself scores it -
-useful specifically because a low-volume new instance of a known-bad
-identifier may not yet have enough transaction history for the graph model
-to catch on its own.
+When a case is confirmed, its shared entity values (device_id,
+bank_account_id, etc.) are added to the watchlist. Any future case
+sharing one of those values is flagged regardless of its own model score.
 """
 
 from __future__ import annotations
@@ -85,9 +72,8 @@ def upsert_case(
     member_ids: list[int],
     model_score: float | None = None,
 ):
-    """Create a case row if it doesn't exist yet (status='pending'). Called
-    once per flagged group when a case queue is populated - never overwrites
-    an existing disposition."""
+    """Create a case row with status 'pending' if one does not already
+    exist. Does not overwrite an existing disposition."""
     now = time.time()
     conn.execute(
         """INSERT INTO ring_case_status
@@ -108,8 +94,7 @@ def set_disposition(
     reviewer: str,
     note: str = "",
 ):
-    """An analyst's actual verdict on a case - this is the real label this
-    whole module exists to eventually collect."""
+    """Record an analyst's disposition on a case."""
     if status not in ("confirmed_ring", "dismissed", "pending"):
         raise ValueError(f"unknown status {status!r}")
     conn.execute(
@@ -121,8 +106,7 @@ def set_disposition(
 
 
 def set_disposition_bulk(conn: sqlite3.Connection, dataset: str, cases: list[tuple[str, int]], status: str, reviewer: str, note: str = ""):
-    """Apply one disposition to many cases at once - e.g. confirm every case
-    in a filtered view in one action instead of one at a time."""
+    """Apply one disposition to many cases in a single transaction."""
     now = time.time()
     conn.executemany(
         """UPDATE ring_case_status SET status=?, reviewer=?, note=?, updated_at=?
@@ -184,9 +168,8 @@ def add_razorpay_event(
     raw_json: str,
     is_simulated: bool = True,
 ):
-    """One ingested Razorpay-shaped webhook payload (real inbound webhook or
-    self-signed simulated traffic - both land here identically). Idempotent
-    on event_id so a webhook retry doesn't double-count."""
+    """Store one ingested Razorpay-shaped webhook payload. Idempotent on
+    event_id, so a webhook retry does not double-count."""
     conn.execute(
         """INSERT INTO razorpay_events
            (event_id, event_type, vpa, email, contact, amount, is_simulated, raw_json, created_at)
@@ -198,8 +181,8 @@ def add_razorpay_event(
 
 
 def list_razorpay_events(conn: sqlite3.Connection, limit: int = 300) -> list[dict]:
-    """Oldest-first, so member indices derived from this list stay stable
-    across polls within one demo run as new events are appended."""
+    """Return events oldest-first, so indices derived from this list stay
+    stable as new events are appended."""
     rows = conn.execute(
         """SELECT event_id, event_type, vpa, email, contact, amount, is_simulated, created_at
            FROM razorpay_events ORDER BY created_at ASC LIMIT ?""",
@@ -220,9 +203,8 @@ def clear_razorpay_events(conn: sqlite3.Connection):
 
 
 def export_labels(conn: sqlite3.Connection, dataset: str) -> list[dict]:
-    """Real disposition-derived labels, ready to replace the majority-vote
-    proxy the moment enough of them exist. Returns only reviewed cases -
-    pending ones aren't labels yet."""
+    """Return disposition-derived labels for reviewed cases. Pending cases
+    are excluded."""
     rows = conn.execute(
         """SELECT relation, group_index, member_ids, status, reviewer, updated_at
            FROM ring_case_status WHERE dataset=? AND status != 'pending'""",

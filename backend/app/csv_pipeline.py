@@ -1,16 +1,11 @@
-"""Upload-a-CSV-of-logs pipeline for the live demo: real identifier-sharing
-graph construction (pure Python, no torch/dgl/networkx - stays deployable on
-the lightweight serving tier) + a disclosed structural heuristic score.
+"""CSV log upload pipeline.
 
-This is deliberately NOT the trained CA-HGAT model. Running that at request
-time on arbitrary uploaded data would need the full heavy ML stack
-(torch+dgl+leidenalg, 800MB+) loaded into the serving process, plus rebuilding
-the exact multi-relation heterograph structure the model was trained on -
-out of scope for a request-time upload demo. What this DOES do honestly: real
-CSV parsing, a real union-find over real shared-identifier edges (device/IP/
-phone/bank-account/VPA columns, whichever are present), and a transparent,
-disclosed scoring formula (component size + number of distinct identifier
-types shared) - not a canned response, not fabricated structure.
+Builds a shared-identifier graph over uploaded rows using union-find
+(device_id, ip_address, phone_hash, bank_account_id, or vpa columns, as
+present) and scores connected components with a structural heuristic
+based on component size and the number of distinct identifier types
+shared. This is not the trained CA-HGAT model; it has no ML dependencies,
+so it runs in the lightweight serving tier.
 """
 
 from __future__ import annotations
@@ -32,8 +27,7 @@ MERCHANT_ALIASES = ["merchant", "merchant_id", "merchant_name"]
 ID_ALIASES = ["id", "row_id", "account_id", "user_id"]
 MAX_ROWS = 5000
 
-# demo default, not a trained threshold - a component needs at least this
-# many members before "coincidental overlap" becomes "worth a look"
+# Minimum component size to flag as a ring.
 MIN_RING_SIZE = 3
 FLAG_SCORE_THRESHOLD = 0.4
 
@@ -68,9 +62,8 @@ def _resolve_columns(fieldnames: list[str]) -> tuple[dict[str, str], str | None,
 
 
 def _score(size: int, n_id_types: int) -> float:
-    """Transparent heuristic: bigger shared-identifier clusters and more
-    distinct identifier types shared (camouflage needs several channels to
-    coordinate) both push the score up. Saturates, doesn't compound forever."""
+    """Score a cluster from its size and the number of distinct identifier
+    types it shares. Both terms saturate."""
     size_term = min(1.0, math.log2(size + 1) / 5.0)
     type_term = min(1.0, n_id_types / 3.0)
     return round(0.5 * size_term + 0.5 * type_term, 4)
@@ -191,10 +184,8 @@ def run_pipeline(raw_csv: bytes) -> dict:
 
 
 def sample_csv() -> str:
-    """A small, fully synthetic sample log file - illustrates the expected
-    columns and gives the live demo something to run against with one click.
-    Not derived from any real dataset; just shaped like UPI transaction
-    logs would be."""
+    """Return a small synthetic sample log file shaped like UPI
+    transaction logs, for use with the upload demo."""
     rows = [
         ["id", "vpa", "device_id", "ip_address", "bank_account_id", "phone_hash", "merchant", "amount", "city"],
     ]

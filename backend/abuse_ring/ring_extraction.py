@@ -1,51 +1,28 @@
-"""Reconstructs candidate rings (hyperedges) from the benchmark's pairwise
-relation graphs, and builds the bipartite member<->group heterograph the
-CA-HGAT model trains on.
+"""Reconstructs candidate rings (hyperedges) from the dataset's pairwise
+relation graphs, and builds the bipartite member-to-group heterograph
+CA-HGAT trains on.
 
-The shipped dataset only stores the already-flattened pairwise relation graph
-(e.g. Yelp's net_rsr = "same product, same rating, same week" turned into a
-clique of pairwise edges), not the original group membership. We reconstruct
-approximate groups from that pairwise graph:
+The shipped datasets store a flattened pairwise relation graph (for
+example, Yelp's net_rsr: same product, rating, and week, as a clique of
+pairwise edges), not the original group membership. Groups are
+reconstructed as follows:
 
-- Sparse relations (avg degree <= SPARSE_DEGREE_THRESHOLD, e.g. Yelp's
-  net_rur = "same reviewer") are just connected components - the relation
-  already partitions cleanly into natural groups.
-- Dense relations (e.g. net_rsr/net_rtr) are far too dense for connected
-  components to mean anything (one giant blob), so we run Leiden community
-  detection *within* each connected component to find the tightly co-active
-  sub-clusters - this is the actual "ring" signal in a dense graph.
+- Sparse relations (average degree at or below SPARSE_DEGREE_THRESHOLD)
+  use connected components directly.
+- Dense relations use Leiden community detection within each connected
+  component, since connected components alone would collapse into one
+  large cluster.
 
-This is a stated approximation, not a hidden one.
+Each relation is also run at two resolutions (kept as separate relation
+types, e.g. net_rsr and net_rsr_fine) so a single resolution choice does
+not discard signal.
 
-Three changes on top of the original version:
-
-1. MULTI-RESOLUTION - the resolution parameter trades off community count
-   vs. size (higher resolution -> more, smaller communities). Running it at
-   two resolutions and keeping both as separate relation types (e.g.
-   `net_rsr` and `net_rsr_fine`) means one wrong granularity doesn't lose the
-   signal entirely - the model gets both views and its own attention decides
-   which one carries more information for a given case.
-2. MODULARITY DIAGNOSTIC (logged, NOT a gate) - a partition's own modularity
-   score was tried as an automatic filter (drop any relation scoring below a
-   floor, on the theory that low modularity means the "groups" are a
-   clustering artifact rather than real structure). Checked empirically
-   against our own results and IT DOESN'T WORK: Elliptic's `flow` relation
-   scores modularity 0.93 (very high) despite the ring mechanism not helping
-   there, while Amazon's `net_usu` - the single relation responsible for our
-   best result, since without its group bottleneck the plain baseline
-   collapses entirely - scores only 0.27 (would have been gated out,
-   deleting the result). Modularity measures whether a partition is
-   graph-theoretically well-separated; it says nothing about whether that
-   grouping predicts the fraud label, which is the actually relevant
-   question. Kept as a logged diagnostic (still informative to look at) but
-   explicitly NOT used to exclude a relation.
-3. LOUVAIN -> LEIDEN - Louvain (used in the first version of this module)
-   has a known defect: it can produce internally disconnected "communities"
-   in some cases, because its local-moving step never checks connectivity.
-   Leiden (Traag, Waltman & van Eck, 2019) fixes this by construction (every
-   community it returns is guaranteed connected) and converges faster on
-   large graphs - the actual reason for the swap being scalability, not a
-   quality problem observed in our own results.
+A partition's modularity score was evaluated as a filter for excluding
+low-modularity relations, and rejected: on Elliptic, the `flow` relation
+has modularity 0.93 with no benefit to the ring mechanism, while on
+Amazon, `net_usu` (the relation responsible for the model's best result)
+has modularity 0.27. Modularity does not predict whether a grouping is
+useful for classification. It is retained as a logged diagnostic only.
 """
 
 from __future__ import annotations

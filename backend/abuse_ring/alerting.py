@@ -1,14 +1,8 @@
-"""Real-time alerting: POSTs a case payload to a configured webhook URL when
-it crosses the auto-confirm policy threshold. This is genuinely functional
-code, not a stub - what's missing is a live external endpoint to point it
-at, since this project has no deployed Slack workspace. Point ALERT_WEBHOOK_URL
-at a real Slack incoming-webhook URL (or any HTTP endpoint) in production;
-the payload shape below is Slack-compatible (a top-level "text" field) as
-well as generic-JSON-compatible, so it works either way without changes.
+"""Webhook alerting for ring confirmations.
 
-Verified end to end against a local mock receiver (see tests further down /
-the session's own verification, not asserted here) rather than assumed to
-work from reading the requests docs.
+Posts a case payload to a configured webhook URL. The payload includes a
+top-level "text" field, so it works with Slack incoming webhooks as well
+as generic JSON endpoints.
 """
 
 from __future__ import annotations
@@ -33,9 +27,11 @@ def format_alert_text(dataset: str, case: dict, reason: str) -> str:
 
 
 def send_alert(dataset: str, case: dict, reason: str, webhook_url: str | None = None) -> dict:
-    """Returns {"sent": bool, "status_code": int|None, "error": str|None}.
-    Never raises - a failed alert shouldn't break the case-processing flow
-    that triggered it; the caller decides whether to retry or just log."""
+    """Post an alert for a confirmed case to the configured webhook.
+
+    Returns {"sent": bool, "status_code": int | None, "error": str | None}.
+    Does not raise on failure.
+    """
     url = webhook_url or ALERT_WEBHOOK_URL
     if not url:
         return {"sent": False, "status_code": None, "error": "no webhook URL configured"}

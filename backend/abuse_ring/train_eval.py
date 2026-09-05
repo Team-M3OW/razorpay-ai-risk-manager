@@ -1,19 +1,17 @@
 """Trains CA-HGAT and evaluates it two ways:
 
-1. Node-level fraud classification on the dataset's fixed test mask, reported
-   next to the published CARE-GNN paper numbers and DGL's own reference
-   reproduction - metric definitions (Recall @ argmax-threshold, ROC-AUC on
-   the raw probability) match dmlc/dgl/examples/pytorch/caregnn/main.py
-   exactly, so the "ours" row is comparable, not just internally consistent.
-2. Ring-level (group) classification - the platform's actual contribution,
-   with no published baseline to compare against.
+1. Node-level fraud classification on the dataset's fixed test mask.
+   Metric definitions (recall at argmax threshold, ROC-AUC on the raw
+   probability) match dmlc/dgl/examples/pytorch/caregnn/main.py, so
+   results are comparable to the published CARE-GNN numbers.
+2. Ring-level (group) classification, with no published baseline to
+   compare against.
 
-Leakage discipline: a group's label used in the TRAINING loss is built only
-from that group's train-split members' true labels (never val/test labels).
-A group's label used in VAL or TEST evaluation is built only from that
-group's val-split or test-split members respectively - never mixed. Groups
-with no majority split (frac < 0.5 for all three) are excluded from both
-training and evaluation rather than guessed at.
+A group's label used in the training loss is built only from that
+group's train-split members. A group's label used in validation or test
+evaluation is built only from that group's validation-split or
+test-split members, respectively. Groups with no majority split are
+excluded from both training and evaluation.
 """
 
 from __future__ import annotations

@@ -1,23 +1,11 @@
-"""Validates the actual claim behind "this could run online instead of
-batch": that scoring one node only needs its local neighborhood, not the
-full graph in memory. This is NOT the inductive mini-batch training rewrite
-(that's a real, separate, larger piece of deferred work - see the
-limitations discussion) - it's a narrower, checkable question: does a
-node's score computed from just its local subgraph match the score computed
-from the full graph? If yes, that's the concrete evidence a production
-scoring path (fetch one node's neighborhood, run inference, done) would give
-the same answer as today's batch/transductive pipeline - a real step toward
-it, not a simulation of it.
+"""Checks whether scoring one node requires only its local neighborhood
+rather than the full graph in memory.
 
-Method: for a sampled TEST node, walk outward through the bipartite
-member<->group structure for as many rounds as the model actually uses
-(num_rounds=2 - member's groups, those groups' other members, THOSE
-members' other groups, etc.), extract the induced subgraph via
-dgl.node_subgraph (which preserves each node's original features and only
-keeps edges between selected nodes - no recomputation needed since group
-features are already precomputed as plain mean-pooling, independent of
-which other nodes happen to be selected), run the model on that subgraph
-alone, and compare its score for the target node to the full-graph score.
+For a sampled test node, this walks outward through the bipartite
+member-to-group structure for as many rounds as the model uses
+(num_rounds=2), extracts the induced subgraph with dgl.node_subgraph,
+runs the model on that subgraph alone, and compares the resulting score
+for the target node to the full-graph score.
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ringfence</title>
+<title>RiskOps</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -213,7 +213,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <div class="brand">
       <div class="brand-mark">🕸️</div>
       <div>
-        <div class="brand-name">Ringfence</div>
+        <div class="brand-name">RiskOps</div>
         <div class="brand-sub">Risk Ops Console</div>
       </div>
     </div>
@@ -261,7 +261,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <div class="topbar">
       <div>
         <h1 id="topbar-title">Overview</h1>
-        <div class="sub" id="topbar-sub">—</div>
+        <div class="sub" id="topbar-sub"></div>
       </div>
       <div id="topbar-actions"></div>
     </div>
@@ -270,7 +270,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view active" id="view-screen">
       <div class="card screen-hero">
         <div class="card-head"><h2>Live Risk Check</h2><span class="pill-badge acc">real query, not a canned demo</span></div>
-        <p class="card-desc">Type a UPI handle, device ID, or bank account seen on a transaction. This runs an actual lookup against the model's detected-ring index — the same data the case queue reads from.</p>
+        <p class="card-desc">Type a UPI handle, device ID, or bank account seen on a transaction. This runs a lookup against the same detected-ring index the case queue reads from.</p>
         <div class="screen-form">
           <input id="screen-input" class="mono-cell" placeholder="e.g. u19000567@okhdfcbank" autocomplete="off">
           <button class="primary" id="screen-btn">Screen</button>
@@ -284,7 +284,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view" id="view-pipeline">
       <div class="card">
         <div class="card-head"><h2>Upload &amp; Trace</h2><span class="pill-badge acc">real graph construction, heuristic scoring</span></div>
-        <p class="card-desc">Upload a CSV of transaction/account logs. A real identifier-sharing graph is built over your rows and splits into connected clusters live, in your browser — no GPU or GNN loaded server-side for this view. <b style="color:var(--text);">Scoring here is a disclosed structural heuristic</b> (cluster size + number of distinct identifier types shared) — not the trained CA-HGAT model used on the four benchmark datasets elsewhere in this app. Running that on arbitrary uploads would mean loading the full torch/dgl stack into the live serving process just for this demo; this view shows the same underlying mechanism — real shared-identifier graph construction — honestly, without pretending it's the trained model.</p>
+        <p class="card-desc">Upload a CSV of transaction or account logs. A shared-identifier graph is built over the rows and split into connected clusters, scored by a structural heuristic (cluster size and number of distinct identifier types shared). This is not the trained CA-HGAT model used on the four benchmark datasets; it runs without a GPU or the ML stack loaded, using the same identifier-matching approach applied to arbitrary uploads.</p>
 
         <div class="dropzone" id="dropzone">
           <input type="file" id="file-input" accept=".csv" hidden>
@@ -307,7 +307,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
 
       <div class="card">
         <div class="card-head"><h2>Live Transaction Feed</h2><span class="pill-badge acc">real Razorpay webhook shape</span></div>
-        <p class="card-desc">A real Razorpay-style webhook receiver — same payload shape as <code>payment.captured</code>/<code>payment.failed</code>, same HMAC-SHA256 signature verification Razorpay documents. Point a real Razorpay test-mode webhook (Settings → Webhooks in your dashboard) at the URL below and it lands here unchanged. No account handy? "Replay simulated traffic" sends the exact same shape, self-signed with the same secret, through the exact same code path — nothing distinguishes real from simulated once it's past signature verification.</p>
+        <p class="card-desc">A webhook receiver matching Razorpay's <code>payment.captured</code> and <code>payment.failed</code> payload shape, with the HMAC-SHA256 signature verification Razorpay's webhooks use. Point a Razorpay test-mode webhook (Settings, Webhooks, in your dashboard) at the URL below to send real events. Without an account, "Replay simulated traffic" sends the same shape, signed with the same secret, through the same endpoint.</p>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:10px 0;font-family:var(--font-mono);font-size:11.5px;color:var(--text2);word-break:break-all;">
           Webhook URL: <span id="rzp-webhook-url" style="color:var(--text);"></span>
           <span id="rzp-secret-status" style="display:block;margin-top:4px;"></span>
@@ -326,7 +326,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view" id="view-network">
       <div class="card">
         <div class="card-head"><h2>Ring Network Explorer</h2><span class="pill-badge">top 25 highest-score groups</span></div>
-        <p class="card-desc">Real bipartite structure: small hub nodes are detected shared-identifier groups, dots are individual accounts/reviews connected to every group they belong to — the same topology CA-HGAT's own message passing runs over. Drag nodes, scroll to zoom, click one to open its case.</p>
+        <p class="card-desc">Small hub nodes are detected shared-identifier groups. Dots are individual accounts or reviews, connected to every group they belong to, matching the topology CA-HGAT's message passing runs over. Drag nodes, scroll to zoom, click one to open its case.</p>
         <div class="network-wrap"><svg id="network-svg"></svg></div>
         <div class="network-legend">
           <span><i class="legend-dot" style="background:#FF5C72"></i> labeled fraud/abuse</span>
@@ -351,7 +351,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
 
       <div class="card">
         <div class="card-head"><h2>Cost-aware decision threshold</h2><span class="pill-badge acc" id="threshold-mode-badge">auto-selected</span></div>
-        <p class="card-desc">The operating point is not a manual dial — it's chosen by sweeping every threshold against real held-out test predictions and picking the one that minimizes total cost (missed-ring cost + false-flag friction cost). Re-selected automatically per dataset, per cost assumption.</p>
+        <p class="card-desc">The operating threshold is chosen automatically by sweeping every value against held-out test predictions and picking the one that minimizes total cost (missed-ring cost plus false-flag cost). It is recalculated per dataset and per cost assumption.</p>
         <div class="cost-curve-wrap">
           <canvas id="cost-curve-canvas"></canvas>
         </div>
@@ -418,7 +418,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
         </div>
         <div class="card">
           <div class="card-head"><h2>Per-segment thresholds</h2><span class="pill-badge">UPI only</span></div>
-          <p class="card-desc">Cost-optimal threshold computed separately per city — the same mechanism applies per-merchant once merchant-tagged data exists.</p>
+          <p class="card-desc">Cost-optimal threshold computed separately per city. The same mechanism applies per merchant once merchant-tagged data exists.</p>
           <div id="segments-content"></div>
         </div>
       </div>
@@ -438,9 +438,9 @@ let currentMetrics = null;
 let currentCases = [];
 const DATASETS = ["yelp", "amazon", "elliptic", "upi"];
 const DATASET_META = {
-  yelp: {label:"Yelp", tagline:"Review-fraud rings — CARE-GNN published benchmark"},
-  amazon: {label:"Amazon", tagline:"Review-fraud rings — plain baseline collapses without the ring mechanism"},
-  elliptic: {label:"Elliptic", tagline:"Real Bitcoin AML transactions — Weber et al. 2019"},
+  yelp: {label:"Yelp", tagline:"Review-fraud rings, CARE-GNN published benchmark"},
+  amazon: {label:"Amazon", tagline:"Review-fraud rings, plain baseline collapses without the ring mechanism"},
+  elliptic: {label:"Elliptic", tagline:"Real Bitcoin AML transactions, Weber et al. 2019"},
   upi: {label:"UPI", tagline:"Synthetic camouflaged mule-ring simulation"},
 };
 
@@ -547,10 +547,9 @@ function drawHeroGraph(nPos, nNeg){
   frame();
 }
 
-// ---------- shared real force-directed graph renderer (D3) ----------
-// Draws the actual bipartite member<->group topology returned by the API -
-// hub nodes are real detected groups, member nodes are real accounts/
-// reviews, edges are real membership, never a fabricated mesh.
+// ---------- shared force-directed graph renderer (D3) ----------
+// Renders the bipartite member/group topology returned by the API. Hub
+// nodes are detected groups, member nodes are accounts or reviews.
 let graphTooltipEl = null;
 function graphTooltip(){
   if(!graphTooltipEl){
@@ -644,7 +643,7 @@ async function runScreen(){
   if(!data.matches.length){
     resultEl.innerHTML = `
       <div class="verdict-card clean">
-        <div class="verdict-title"><span class="verdict-icon">✓</span> Clean — no ring match</div>
+        <div class="verdict-title"><span class="verdict-icon">✓</span> Clean, no ring match</div>
         <p style="color:var(--text2);font-size:13px;">"${data.query}" does not appear in any of the ${data.scanned_groups} scored groups for ${currentDataset}. No shared identifier, no group membership found.</p>
       </div>`;
     return;
@@ -662,7 +661,7 @@ async function runScreen(){
 
   resultEl.innerHTML = `
     <div class="verdict-card hit">
-      <div class="verdict-title"><span class="verdict-icon">⚠</span> Ring match — "${data.query}"</div>
+      <div class="verdict-title"><span class="verdict-icon">⚠</span> Ring match: "${data.query}"</div>
       <p style="color:var(--text2);font-size:13px;">Matched via <b style="color:var(--text);font-family:var(--font-mono);">${m.matched_via}</b> into a <b style="color:var(--text);font-family:var(--font-mono);">${m.relation}</b> group.</p>
       <div class="verdict-meta">
         <span>Score <b>${fmt3(m.score)}</b></span>
@@ -789,7 +788,7 @@ async function runPipeline(file){
     logLine(consoleEl, `error: ${e.message}`, "flag");
     return;
   }
-  logLine(consoleEl, `parsed ${data.row_count} rows — columns detected: ${data.columns_used.join(", ") || "none"}`);
+  logLine(consoleEl, `parsed ${data.row_count} rows, columns detected: ${data.columns_used.join(", ") || "none"}`);
   await wait(250);
   logLine(consoleEl, `building shared-identifier graph…`);
   await wait(250);
@@ -801,7 +800,7 @@ async function runPipeline(file){
 
   for(const ring of data.rings){
     await wait(550);
-    logLine(consoleEl, `ring #${ring.ring_id} — ${ring.size} accounts — shares ${ring.shared_via.join(" + ")} — score ${ring.score.toFixed(2)} — ${ring.flagged?"FLAGGED":"below threshold"}`, ring.flagged?"flag":"ok");
+    logLine(consoleEl, `ring #${ring.ring_id}: ${ring.size} accounts, shares ${ring.shared_via.join(" + ")}, score ${ring.score.toFixed(2)}, ${ring.flagged?"FLAGGED":"below threshold"}`, ring.flagged?"flag":"ok");
     addRingToPipelineGraph(sim, data.graph.edges, ring);
   }
   await wait(400);
@@ -844,8 +843,8 @@ async function initRazorpayPanel(){
   try{
     const data = await fetchJSON(`/webhooks/razorpay/recent?limit=1`);
     document.getElementById("rzp-secret-status").innerHTML = data.webhook_secret_configured
-      ? `RAZORPAY_WEBHOOK_SECRET is configured — ready to accept a real Razorpay test-mode webhook.`
-      : `Using the built-in demo secret (no RAZORPAY_WEBHOOK_SECRET env var set) — simulated traffic works fully as-is; set that env var plus a matching secret in your Razorpay dashboard's webhook settings to also accept real test-mode events here.`;
+      ? `RAZORPAY_WEBHOOK_SECRET is configured. Ready to accept a real Razorpay test-mode webhook.`
+      : `Using the built-in demo secret (no RAZORPAY_WEBHOOK_SECRET env var set). Simulated traffic works as-is; set that env var plus a matching secret in the Razorpay dashboard's webhook settings to accept real test-mode events too.`;
   }catch(e){}
   rzpPoll();
   if(!rzpPollTimer) rzpPollTimer = setInterval(rzpPoll, 1200);
@@ -858,13 +857,13 @@ async function rzpPoll(){
     if(rzpSeenEventIds.has(ev.event_id)) continue;
     rzpSeenEventIds.add(ev.event_id);
     const amt = ev.amount != null ? `₹${(ev.amount/100).toFixed(2)}` : "-";
-    rzpLog(`${ev.event_type} — vpa ${ev.vpa || "-"} — ${amt} [${ev.is_simulated ? "simulated" : "REAL"}]`);
+    rzpLog(`${ev.event_type}: vpa ${ev.vpa || "-"}, ${amt} [${ev.is_simulated ? "simulated" : "REAL"}]`);
   }
   for(const ring of data.rings){
     const sig = ring.events.slice().sort().join(",");
     if(rzpAnnouncedRings.has(sig)) continue;
     rzpAnnouncedRings.add(sig);
-    rzpLog(`RING DETECTED — ${ring.size} linked payments — shared ${ring.shared_via.join(" + ")}`, "flag");
+    rzpLog(`RING DETECTED: ${ring.size} linked payments, shared ${ring.shared_via.join(" + ")}`, "flag");
     document.getElementById("rzp-graph-wrap").style.display = "block";
     renderForceGraph(document.getElementById("rzp-svg"), data.graph.nodes, data.graph.edges);
   }
@@ -937,9 +936,8 @@ function computeAtThreshold(probs, labels, t, fnCost, fpCost){
   };
 }
 
-// Sweeps every threshold against real held-out predictions and returns the
-// full cost curve plus the argmin — this is what picks the operating point,
-// not a person dragging a control.
+// Sweeps every threshold against held-out predictions, returns the cost
+// curve and the argmin.
 function sweepCostCurve(probs, labels, fnCost, fpCost, steps=200){
   const curve = [];
   let best = null;
@@ -1038,8 +1036,8 @@ async function loadDataset(){
   currentMetrics = await fetchJSON(`${API}/datasets/${currentDataset}/metrics`);
   updateAutoThreshold();
 
-  document.getElementById("hero-title").textContent = `${DATASET_META[currentDataset].label} — ${currentDataset==='upi'?'synthetic demo':'real benchmark'}`;
-  document.getElementById("hero-sub").textContent = `Test AUC ${fmt3(currentMetrics.node_test_metrics.auc)} · Recall ${fmt3(currentMetrics.node_test_metrics.recall)} — live network view of flagged accounts`;
+  document.getElementById("hero-title").textContent = `${DATASET_META[currentDataset].label}: ${currentDataset==='upi'?'synthetic demo':'real benchmark'}`;
+  document.getElementById("hero-sub").textContent = `Test AUC ${fmt3(currentMetrics.node_test_metrics.auc)} · Recall ${fmt3(currentMetrics.node_test_metrics.recall)} · live network view of flagged accounts`;
 
   await Promise.all([loadCases(), loadWatchlist(), loadSegments(), loadSpikes()]);
   drawHeroGraph(currentMetrics.node_test_metrics.recall*40, 20);
@@ -1105,7 +1103,7 @@ async function loadWatchlist(){
   const wl = await fetchJSON(`${API}/datasets/${currentDataset}/watchlist`);
   document.getElementById("nav-watch-count").textContent = wl.length;
   const el = document.getElementById("watchlist-content");
-  if(!wl.length){ el.innerHTML = `<div class="empty-state">No entries yet — confirm a ring to populate this.</div>`; return; }
+  if(!wl.length){ el.innerHTML = `<div class="empty-state">No entries yet. Confirm a ring to populate this.</div>`; return; }
   el.innerHTML = `<table><thead><tr><th>Entity type</th><th>Value</th><th>Source case</th><th>Added by</th></tr></thead><tbody>
     ${wl.map(w=>`<tr><td>${w.entity_type}</td><td class="mono-cell">${w.entity_value}</td><td>${w.source_relation} #${w.source_group_index}</td><td>${w.reviewer}</td></tr>`).join("")}
   </tbody></table>`;

@@ -1,16 +1,11 @@
-"""Exports ranked ring cases from a trained model into a plain JSON file the
-API serves without needing the model or graph reloaded per request. Each
-case is a detected group (relation + group index), with member details,
-a "why flagged" evidence block, and a score - the data a case-queue UI
-actually needs.
+"""Exports ranked ring cases from a trained model into a JSON file the API
+serves without reloading the model or graph per request. Each case is a
+detected group (relation and group index) with member details, an
+evidence block, and a score.
 
-Visualization topology: each case is exported as a star (members connected
-to a central hub representing the shared relation/entity), not a
-reconstructed pairwise graph. This is both simpler and more honest -
-members of a Louvain/Leiden community aren't necessarily all pairwise
-connected in the original relation graph, but they ARE all connected
-through the shared group, which is exactly what CA-HGAT's own bipartite
-member<->group structure represents.
+Each case is exported as a star: members connected to a central hub
+representing the shared relation or entity, matching CA-HGAT's bipartite
+member-to-group structure rather than a reconstructed pairwise graph.
 """
 
 from __future__ import annotations
