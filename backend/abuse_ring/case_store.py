@@ -53,6 +53,18 @@ CREATE TABLE IF NOT EXISTS watchlist (
     created_at REAL NOT NULL,
     PRIMARY KEY (dataset, entity_type, entity_value)
 );
+
+CREATE TABLE IF NOT EXISTS razorpay_events (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    vpa TEXT,
+    email TEXT,
+    contact TEXT,
+    amount INTEGER,
+    is_simulated INTEGER NOT NULL DEFAULT 1,
+    raw_json TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
 """
 
 
@@ -159,6 +171,52 @@ def check_watchlist(conn: sqlite3.Connection, dataset: str, entity_type: str, en
         (dataset, entity_type, str(entity_value)),
     ).fetchone()
     return row is not None
+
+
+def add_razorpay_event(
+    conn: sqlite3.Connection,
+    event_id: str,
+    event_type: str,
+    vpa: str | None,
+    email: str | None,
+    contact: str | None,
+    amount: int | None,
+    raw_json: str,
+    is_simulated: bool = True,
+):
+    """One ingested Razorpay-shaped webhook payload (real inbound webhook or
+    self-signed simulated traffic - both land here identically). Idempotent
+    on event_id so a webhook retry doesn't double-count."""
+    conn.execute(
+        """INSERT INTO razorpay_events
+           (event_id, event_type, vpa, email, contact, amount, is_simulated, raw_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(event_id) DO NOTHING""",
+        (event_id, event_type, vpa, email, contact, amount, int(is_simulated), raw_json, time.time()),
+    )
+    conn.commit()
+
+
+def list_razorpay_events(conn: sqlite3.Connection, limit: int = 300) -> list[dict]:
+    """Oldest-first, so member indices derived from this list stay stable
+    across polls within one demo run as new events are appended."""
+    rows = conn.execute(
+        """SELECT event_id, event_type, vpa, email, contact, amount, is_simulated, created_at
+           FROM razorpay_events ORDER BY created_at ASC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "event_id": r[0], "event_type": r[1], "vpa": r[2], "email": r[3],
+            "contact": r[4], "amount": r[5], "is_simulated": bool(r[6]), "created_at": r[7],
+        }
+        for r in rows
+    ]
+
+
+def clear_razorpay_events(conn: sqlite3.Connection):
+    conn.execute("DELETE FROM razorpay_events")
+    conn.commit()
 
 
 def export_labels(conn: sqlite3.Connection, dataset: str) -> list[dict]:

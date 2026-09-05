@@ -304,6 +304,22 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
         <div id="pipeline-summary"></div>
         <div id="pipeline-rings"></div>
       </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Live Transaction Feed</h2><span class="pill-badge acc">real Razorpay webhook shape</span></div>
+        <p class="card-desc">A real Razorpay-style webhook receiver — same payload shape as <code>payment.captured</code>/<code>payment.failed</code>, same HMAC-SHA256 signature verification Razorpay documents. Point a real Razorpay test-mode webhook (Settings → Webhooks in your dashboard) at the URL below and it lands here unchanged. No account handy? "Replay simulated traffic" sends the exact same shape, self-signed with the same secret, through the exact same code path — nothing distinguishes real from simulated once it's past signature verification.</p>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:10px 0;font-family:var(--font-mono);font-size:11.5px;color:var(--text2);word-break:break-all;">
+          Webhook URL: <span id="rzp-webhook-url" style="color:var(--text);"></span>
+          <span id="rzp-secret-status" style="display:block;margin-top:4px;"></span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="primary" id="rzp-replay-btn">Replay simulated traffic</button>
+          <button class="ghost" id="rzp-reset-btn">Reset feed</button>
+          <span id="rzp-status" style="color:var(--text2);font-size:12.5px;"></span>
+        </div>
+        <div class="pipeline-console" id="rzp-console" style="margin-top:14px;max-height:220px;"></div>
+        <div id="rzp-graph-wrap" class="network-wrap" style="margin-top:16px;display:none;height:340px;"><svg id="rzp-svg"></svg></div>
+      </div>
     </section>
 
     <!-- NETWORK EXPLORER -->
@@ -816,6 +832,58 @@ document.getElementById("use-sample-btn").onclick = async () => {
   runPipeline(new File([new Blob([csvText], {type:"text/csv"})], "sample_logs.csv", {type:"text/csv"}));
 };
 
+// ---------- Live Transaction Feed (Razorpay webhook shape) ----------
+let rzpPollTimer = null;
+let rzpSeenEventIds = new Set();
+let rzpAnnouncedRings = new Set();
+
+function rzpLog(text, cls=""){ logLine(document.getElementById("rzp-console"), text, cls); }
+
+async function initRazorpayPanel(){
+  document.getElementById("rzp-webhook-url").textContent = `${location.origin}/webhooks/razorpay`;
+  try{
+    const data = await fetchJSON(`/webhooks/razorpay/recent?limit=1`);
+    document.getElementById("rzp-secret-status").innerHTML = data.webhook_secret_configured
+      ? `RAZORPAY_WEBHOOK_SECRET is configured — ready to accept a real Razorpay test-mode webhook.`
+      : `Using the built-in demo secret (no RAZORPAY_WEBHOOK_SECRET env var set) — simulated traffic works fully as-is; set that env var plus a matching secret in your Razorpay dashboard's webhook settings to also accept real test-mode events here.`;
+  }catch(e){}
+  rzpPoll();
+  if(!rzpPollTimer) rzpPollTimer = setInterval(rzpPoll, 1200);
+}
+
+async function rzpPoll(){
+  let data;
+  try{ data = await fetchJSON(`/webhooks/razorpay/recent`); }catch(e){ return; }
+  for(const ev of data.events){
+    if(rzpSeenEventIds.has(ev.event_id)) continue;
+    rzpSeenEventIds.add(ev.event_id);
+    const amt = ev.amount != null ? `₹${(ev.amount/100).toFixed(2)}` : "-";
+    rzpLog(`${ev.event_type} — vpa ${ev.vpa || "-"} — ${amt} [${ev.is_simulated ? "simulated" : "REAL"}]`);
+  }
+  for(const ring of data.rings){
+    const sig = ring.events.slice().sort().join(",");
+    if(rzpAnnouncedRings.has(sig)) continue;
+    rzpAnnouncedRings.add(sig);
+    rzpLog(`RING DETECTED — ${ring.size} linked payments — shared ${ring.shared_via.join(" + ")}`, "flag");
+    document.getElementById("rzp-graph-wrap").style.display = "block";
+    renderForceGraph(document.getElementById("rzp-svg"), data.graph.nodes, data.graph.edges);
+  }
+}
+
+document.getElementById("rzp-replay-btn").onclick = async () => {
+  document.getElementById("rzp-status").textContent = "sending simulated traffic…";
+  await fetchJSON(`/webhooks/razorpay/replay`, {method:"POST"});
+  setTimeout(() => { document.getElementById("rzp-status").textContent = ""; }, 12000);
+};
+document.getElementById("rzp-reset-btn").onclick = async () => {
+  await fetchJSON(`/webhooks/razorpay/reset`, {method:"POST"});
+  rzpSeenEventIds.clear(); rzpAnnouncedRings.clear();
+  document.getElementById("rzp-console").innerHTML = "";
+  document.getElementById("rzp-graph-wrap").style.display = "none";
+  toast("Feed reset");
+};
+initRazorpayPanel();
+
 // ---------- nav / view switching ----------
 document.querySelectorAll(".nav-item").forEach(el=>{
   el.onclick = () => setView(el.dataset.view);
@@ -824,7 +892,7 @@ function setView(v){
   currentView = v;
   document.querySelectorAll(".nav-item").forEach(el=>el.classList.toggle("active", el.dataset.view===v));
   document.querySelectorAll(".view").forEach(el=>el.classList.toggle("active", el.id==="view-"+v));
-  const titles = {screen:"Live Risk Check", network:"Network Explorer", overview:"Model Performance", cases:"Case Queue", watchlist:"Watchlist", intel:"Intelligence"};
+  const titles = {screen:"Live Risk Check", pipeline:"Upload & Trace", network:"Network Explorer", overview:"Model Performance", cases:"Case Queue", watchlist:"Watchlist", intel:"Intelligence"};
   document.getElementById("topbar-title").textContent = titles[v];
   document.getElementById("topbar-sub").textContent = DATASET_META[currentDataset].tagline;
   if(v==="network" && currentDataset) loadNetwork();

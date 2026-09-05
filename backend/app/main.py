@@ -23,21 +23,32 @@ import sys
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .csv_pipeline import run_pipeline, sample_csv
+from .razorpay_simulator import (
+    RAZORPAY_WEBHOOK_SECRET,
+    detect_rings,
+    extract_identifiers,
+    generate_traffic_batch,
+    sign_and_process_all,
+    verify_signature,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from abuse_ring.alerting import send_alert  # noqa: E402
 from abuse_ring.case_store import (  # noqa: E402
+    add_razorpay_event,
     add_to_watchlist,
     check_watchlist,
+    clear_razorpay_events,
     connect,
     export_labels,
+    list_razorpay_events,
     list_watchlist,
     set_disposition,
     set_disposition_bulk,
@@ -380,6 +391,79 @@ async def pipeline_trace(file: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return result
+
+
+def _process_razorpay_event(raw_body: bytes, signature: str | None, is_simulated: bool) -> dict:
+    """The single processing path for a Razorpay-shaped webhook payload,
+    used identically by the real inbound webhook route and by the
+    self-signed simulated-traffic replay - no branch distinguishes "real"
+    from "simulated" past signature verification, which both go through."""
+    if not verify_signature(raw_body, signature):
+        raise HTTPException(400, "invalid webhook signature")
+    try:
+        event = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "invalid JSON body")
+    ids = extract_identifiers(event)
+    if not ids:
+        raise HTTPException(400, "payload is not a recognizable Razorpay payment-webhook shape")
+    conn = connect()
+    add_razorpay_event(
+        conn, ids["event_id"], ids["event_type"], ids.get("vpa"), ids.get("email"),
+        ids.get("contact"), ids.get("amount"), raw_body.decode(), is_simulated=is_simulated,
+    )
+    return ids
+
+
+@app.post("/webhooks/razorpay")
+async def razorpay_webhook(request: Request):
+    """Real inbound Razorpay webhook endpoint. Verifies the X-Razorpay-
+    Signature header against RAZORPAY_WEBHOOK_SECRET using Razorpay's
+    documented HMAC-SHA256-of-the-raw-body scheme - point a real Razorpay
+    test-mode webhook (Settings -> Webhooks in the dashboard) at this URL
+    and it works unchanged; no code path here is simulation-only."""
+    raw_body = await request.body()
+    signature = request.headers.get("x-razorpay-signature")
+    ids = _process_razorpay_event(raw_body, signature, is_simulated=False)
+    return {"ok": True, "event_id": ids["event_id"]}
+
+
+@app.post("/webhooks/razorpay/replay")
+def razorpay_replay(background_tasks: BackgroundTasks, n_normal: int = 20, ring_size: int = 6):
+    """Generates a batch of Razorpay-shaped synthetic traffic (a background
+    of distinct payments plus one planted coordinated-identifier ring),
+    signs each event with the same webhook secret real traffic would be
+    verified against, and feeds them through the exact same processing
+    function as a real webhook - paced with a short delay per event so a
+    polling frontend can show them arriving over a few seconds. Returns
+    immediately; poll /webhooks/razorpay/recent to watch it happen."""
+    events = generate_traffic_batch(n_normal=n_normal, ring_size=ring_size)
+
+    def _run():
+        sign_and_process_all(events, lambda body, sig, sim: _process_razorpay_event(body, sig, sim))
+
+    background_tasks.add_task(_run)
+    return {"started": True, "events_queued": len(events)}
+
+
+@app.post("/webhooks/razorpay/reset")
+def razorpay_reset():
+    """Clears the demo event buffer for a clean re-run before recording."""
+    clear_razorpay_events(connect())
+    return {"ok": True}
+
+
+@app.get("/webhooks/razorpay/recent")
+def razorpay_recent(limit: int = 300):
+    events = list_razorpay_events(connect(), limit=limit)
+    detection = detect_rings(events)
+    return {
+        "webhook_url_hint": "/webhooks/razorpay",
+        "webhook_secret_configured": RAZORPAY_WEBHOOK_SECRET != "demo_secret_for_local_testing",
+        "events": events,
+        "rings": detection["rings"],
+        "graph": detection["graph"],
+    }
 
 
 @app.get("/api/datasets/{ds}/cases/export.csv")
