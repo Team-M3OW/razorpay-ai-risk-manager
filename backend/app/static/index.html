@@ -270,7 +270,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view active" id="view-screen">
       <div class="card screen-hero">
         <div class="card-head"><h2>Live Risk Check</h2><span class="pill-badge acc">real query, not a canned demo</span></div>
-        <p class="card-desc">Type a UPI handle, device ID, or bank account seen on a transaction. This runs a lookup against the same detected-ring index the case queue reads from.</p>
+        <p class="card-desc">Look up a UPI handle, device ID, or bank account against the detected-ring index.</p>
         <div class="screen-form">
           <input id="screen-input" class="mono-cell" placeholder="e.g. u19000567@okhdfcbank" autocomplete="off">
           <button class="primary" id="screen-btn">Screen</button>
@@ -284,7 +284,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view" id="view-pipeline">
       <div class="card">
         <div class="card-head"><h2>Upload &amp; Trace</h2><span class="pill-badge acc">real graph construction, heuristic scoring</span></div>
-        <p class="card-desc">Upload a CSV of transaction or account logs. A shared-identifier graph is built over the rows and split into connected clusters, scored by a structural heuristic (cluster size and number of distinct identifier types shared). This is not the trained CA-HGAT model used on the four benchmark datasets; it runs without a GPU or the ML stack loaded, using the same identifier-matching approach applied to arbitrary uploads.</p>
+        <p class="card-desc">Upload a CSV of transaction or account logs to detect connected rings by shared device, IP, phone, or bank account.</p>
 
         <div class="dropzone" id="dropzone">
           <input type="file" id="file-input" accept=".csv" hidden>
@@ -307,7 +307,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
 
       <div class="card">
         <div class="card-head"><h2>Live Transaction Feed</h2><span class="pill-badge acc">real Razorpay webhook shape</span></div>
-        <p class="card-desc">A webhook receiver matching Razorpay's <code>payment.captured</code> and <code>payment.failed</code> payload shape, with the HMAC-SHA256 signature verification Razorpay's webhooks use. Point a Razorpay test-mode webhook (Settings, Webhooks, in your dashboard) at the URL below to send real events. Without an account, "Replay simulated traffic" sends the same shape, signed with the same secret, through the same endpoint.</p>
+        <p class="card-desc">Receives Razorpay <code>payment.captured</code> and <code>payment.failed</code> webhooks, or generates matching test traffic below.</p>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:10px 0;font-family:var(--font-mono);font-size:11.5px;color:var(--text2);word-break:break-all;">
           Webhook URL: <span id="rzp-webhook-url" style="color:var(--text);"></span>
           <span id="rzp-secret-status" style="display:block;margin-top:4px;"></span>
@@ -326,7 +326,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view" id="view-network">
       <div class="card">
         <div class="card-head"><h2>Ring Network Explorer</h2><span class="pill-badge">top 25 highest-score groups</span></div>
-        <p class="card-desc">Small hub nodes are detected shared-identifier groups. Dots are individual accounts or reviews, connected to every group they belong to, matching the topology CA-HGAT's message passing runs over. Drag nodes, scroll to zoom, click one to open its case.</p>
+        <p class="card-desc">Hubs are detected groups, dots are accounts or reviews. Drag, scroll to zoom, click a node to open its case.</p>
         <div class="network-wrap"><svg id="network-svg"></svg></div>
         <div class="network-legend">
           <span><i class="legend-dot" style="background:#FF5C72"></i> labeled fraud/abuse</span>
@@ -351,7 +351,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
 
       <div class="card">
         <div class="card-head"><h2>Cost-aware decision threshold</h2><span class="pill-badge acc" id="threshold-mode-badge">auto-selected</span></div>
-        <p class="card-desc">The operating threshold is chosen automatically by sweeping every value against held-out test predictions and picking the one that minimizes total cost (missed-ring cost plus false-flag cost). It is recalculated per dataset and per cost assumption.</p>
+        <p class="card-desc">Chosen automatically per dataset by minimizing total cost across held-out predictions.</p>
         <div class="cost-curve-wrap">
           <canvas id="cost-curve-canvas"></canvas>
         </div>
@@ -403,7 +403,7 @@ button:disabled{opacity:0.35;cursor:not-allowed;}
     <section class="view" id="view-watchlist">
       <div class="card">
         <div class="card-head"><h2>Confirmed-identifier watchlist</h2><span class="pill-badge">auto-populated</span></div>
-        <p class="card-desc">Populated automatically when a case is confirmed as a ring. Any future case sharing one of these values gets flagged regardless of its own model score.</p>
+        <p class="card-desc">Confirming a ring adds its shared identifiers here. Any future case sharing one is flagged automatically.</p>
         <div id="watchlist-content"></div>
       </div>
     </section>
